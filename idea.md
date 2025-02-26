@@ -1,8 +1,6 @@
 # AI Chatbot for College Queries
 
-# 1. Project Title:
-
-# AI-Based Chatbot for College Query Resolution
+# 1. Project Title: AI-Based Chatbot for College Query Resolution
 
 # 2. Introduction:
 
