@@ -66,7 +66,7 @@
 | **User Adoption** | Requires Telegram (not all students use it) | Most students already use WhatsApp | No app required, works for everyone |
 | **Development Effort** | Minimal (ready-to-use API) | Medium (requires API setup and approval) | High (front-end \+ back-end needed) |
 
-**We will be creating a telegram Bot with telegram API** or python-telegram bot.
+**We will be creating a telegram Bot with telegram API** or python-telegram bot, given the fact that it is completely free, relatively simple to implement and ready-to-use.
 
 
 
