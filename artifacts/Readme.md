@@ -6,37 +6,37 @@
 
   1) These are the questions most often asked by students, the general/vague prompts which will be used to train the chatbot. Here is a list of them
 
-     1) Where do I receive my Immatrikulationsbeschenigung?
+     1) Where do I receive my Immatrikulationsbescheinigung?
 
-        2) How do I access my Semester Ticket \+ map of validity?
+     2) How do I access my Semester Ticket \+ map of validity?
 
-        3) Where is the \[college name, dorm letter\] laundry room located?
+     3) Where is the \[college name, dorm letter\] laundry room located?
 
-        4) How do I submit my request for a residence permit/address change/driving license conversion?
+     4) How do I submit my request for a residence permit/address change/driving license conversion?
 
-        5) When are the locker opening hours?
+     5) When are the locker opening hours?
 
-        6) List of emergency contacts (police/college services)
+     6) List of emergency contacts (police/college services)
 
-        7) Software accessible with a university account
+     7) Software accessible with a university account
 
-        8) Servery hours/menu
+     8) Servery hours/menu
 
-        9) Class Location/Time
+     9) Class Location/Time
 
-        10) \[Degree Name\] Semester Plan
+     10) \[Degree Name\] Semester Plan
 
-        11) Exam Schedules
+     11) Exam Schedules
 
-        12) What events are happening today/this week/etc.?
+     12) What events are happening today/this week/etc.?
 
-        13) Process to submit \[document\] request
+     13) Process to submit \[document\] request
 
-        14) Medical care/Clinic or hospital location+phone numbers
+     14) Medical care/Clinic or hospital location+phone numbers
 
-        15) General IT guidelines (vpn, ethernet, wifi, teamwork, outlook, moodle, lms)
+     15) General IT guidelines (vpn, ethernet, wifi, teamwork, outlook, moodle, lms)
 
-        16) \[Optional: virtual academic advisor\]
+     16) \[Optional: virtual academic advisor\]
 
 **2\. Dataset**
 
@@ -46,13 +46,13 @@
 
      1) Study programs
 
-        2) \[degree\] handbooks
+     2) \[degree\] handbooks
 
-        3) Government sites \[for residence permits, driving licenses\]
+     3) Government sites \[for residence permits, driving licenses\]
 
-        4) CampusNet/Moodle/Learner
+     4) CampusNet/Moodle/Learner
 
-        5) Constructor University Website
+     5) Constructor University Website
 
 
 **3\. Deployment Plan – Steps to put it online (Telegram, Domain)**
