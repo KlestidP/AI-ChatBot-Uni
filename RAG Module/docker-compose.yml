@@ -1,0 +1,11 @@
+services:
+  chatbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+      HF_TOKEN: ${HF_TOKEN}  # Optional, for real tokenizer
+    volumes:
+      - ./src:/app/src
+    restart: unless-stopped
