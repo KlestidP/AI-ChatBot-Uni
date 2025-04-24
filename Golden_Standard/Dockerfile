@@ -24,4 +24,4 @@ COPY src ./src
 RUN uv sync
 
 # Set the default command (this will be overridden by docker-compose)
-ENTRYPOINT ["uv", "run", "python", "-m", "uni_ai_chatbot.main"]
+ENTRYPOINT ["uv", "run", "python", "-m", "uni_ai_chatbot.telegram_bot"]

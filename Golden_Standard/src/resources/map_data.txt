@@ -1,0 +1,29 @@
+Reimar Lüst Hall (RLH) is in the north part of campus and is a administration facility.
+Reception is in the west part of campus and is a administration facility.
+Receiving is in the west part of campus and is a administration facility.
+Research 1 is in the center part of campus and is a research & teaching facility.
+Research 2 is in the center part of campus and is a research & teaching facility.
+Research 3 is in the center part of campus and is a research & teaching facility.
+Research 4 is in the center part of campus and is a research & teaching facility.
+Robotics Lab is in the west part of campus and is a research & teaching facility.
+Ocean Lab is in the center part of campus and is a research & teaching facility.
+Lab 2 is in the south part of campus and is a research & teaching facility.
+Lab 3 is in the west part of campus and is a research & teaching facility.
+EON Lab is in the center part of campus and is a research & teaching facility.
+Campus Center / IRC is in the north part of campus and is a public space facility.
+University Club is in the north part of campus and is a public space facility.
+The Other Side is in the north part of campus and is a public space facility.
+Music Lab, Theater Space, Cinema is in the north part of campus and is a public space facility.
+Playing Field is in the southeast part of campus and is a public space facility.
+Kids at Jacobs is in the south part of campus and is a public space facility.
+Sports & Convention Center (SCC) is in the east part of campus and is a public space facility.
+Student Activity Center (SAC) is in the east part of campus and is a public space facility.
+Campus Green is in the center part of campus and is a public space facility.
+Main Gate is in the west part of campus and is a public space facility.
+Krupp College is in the northeast part of campus and is a residence facility.
+Mercator College is in the east part of campus and is a residence facility.
+College 3 is in the east part of campus and is a residence facility.
+Nordmetall College is in the north part of campus and is a residence facility.
+West Hall is in the northeast part of campus and is a residence facility.
+South Hall is in the northeast part of campus and is a residence facility.
+East Hall is in the east part of campus and is a residence facility.
