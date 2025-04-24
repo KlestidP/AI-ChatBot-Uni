@@ -12,7 +12,7 @@ from langchain_mistralai import ChatMistralAI
 from uni_ai_chatbot.resources import get_resource
 from dotenv import load_dotenv
 from uni_ai_chatbot.campus_map_data import campus_map
-from difflib import get_close_matcheso,
+from difflib import get_close_matches
 
 load_dotenv()
 logging.basicConfig(
