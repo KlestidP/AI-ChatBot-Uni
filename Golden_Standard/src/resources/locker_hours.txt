@@ -1,0 +1,41 @@
+Krupp College
+Monday:
+- Basement A: 19:40–20:10
+- Basement B: 19:40–20:10
+- Basement C: 20:10–20:40
+- Basement F: 20:10–20:40 (in planning)
+Thursday:
+- Basement A: 21:20–21:50
+- Basement B: 21:20–21:50
+- Basement C: 20:50–21:20
+- Basement F: 22:30–23:00 (in planning)
+
+College III
+Monday:
+- Basement A: 21:20–21:50
+- Basement B: 22:00–22:30
+- Basement C: 22:00–22:30
+- Basement D: 22:30–23:00
+Thursday:
+- Basement A: 19:30–20:00
+- Basement B: 19:30–20:00
+- Basement C: 19:00–19:30
+- Basement D: 19:00–19:30
+
+Nordmetall College
+Monday:
+- Basement A: 19:00–19:30
+- Basement B: 19:00–19:30
+Thursday:
+- Basement A: 22:00–22:30
+- Basement B: 22:00–22:30
+
+Mercator College
+Monday:
+- Basement A: 20:50–21:20
+- Basement B: 20:50–21:20
+- Basement C: 21:20–21:50
+Thursday:
+- Basement A: 20:10–20:40
+- Basement B: 20:40–21:10
+- Basement C: 20:10–20:40
