@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 from pathlib import Path
 from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -158,30 +159,37 @@ async def handle_locker_hours(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = update.message.text.lower()
     locker_data = context.bot_data["locker_hours"]
 
-    colleges = {
-        "Krupp College": ["krupp", "krupp college"],
-        "College III": ["college iii", "college 3", "college iii college"],
-        "Nordmetall College": ["nordmetall", "nordmetall college"],
-        "Mercator College": ["mercator", "mercator college"]
+    aliases = {
+        # Krupp
+        "krupp": "Krupp College",
+        "krupp college": "Krupp College",
+
+        # College III
+        "college iii": "College III",
+        "college 3": "College III",
+        "c3": "College III",
+
+        # Nordmetall
+        "nordmetall": "Nordmetall College",
+        "nordmetall college": "Nordmetall College",
+        "nord": "Nordmetall College",
+
+        # Mercator
+        "mercator": "Mercator College",
+        "mercator college": "Mercator College",
     }
 
-    matched_college = None
-    for college, variations in colleges.items():
-        for variation in variations:
-            if variation in text:
-                matched_college = college
-                break
-        if matched_college:
-            break
-
-    if not matched_college:
-        await update.message.reply_text("❓ Please mention the college (Krupp, College III, Nordmetall, or Mercator).")
+    canonical = next((real for alias, real in aliases.items() if alias in text), None)
+    if not canonical:
+        await update.message.reply_text(
+            "❓ Please mention the college (Krupp, College III, Nordmetall, or Mercator).")
         return
+    matched_college = canonical
 
     basement = None
-    for b in ["a", "b", "c", "d", "f"]:
-        if f"basement {b}" in text or f" {b}" in text:
-            basement = b.upper()
+    m = re.search(r'\b(?:basement\s*)?([abcdf])\b', text, re.I)
+    if m:
+        basement = m.group(1).upper()
 
     day = None
     if "monday" in text:
@@ -222,10 +230,9 @@ async def handle_servery_hours(update: Update, context: ContextTypes.DEFAULT_TYP
     text = update.message.text.lower()
     data  = context.bot_data["servery_hours"]
 
-    # fuzzy-ish college matching
     colleges = {
         "Alfried Krupp College": ["krupp", "alfried krupp"],
-        "College Nordmetall & College 3": ["nordmetall", "college 3", "college iii"],
+        "College Nordmetall & College 3": ["nordmetall", "college 3", "college iii", "c3", "nord"],
         "Mercator College": ["mercator"],
         "Coffee Bar": ["coffee bar", "bar"]
     }
