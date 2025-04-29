@@ -132,10 +132,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /help is issued."""
     await update.message.reply_text(
-        "Just ask me any question about college schedules, fees, or events. For example:\n"
-        "- When are the college fees due?\n"
-        "- Is the library open next month?\n"
-        "- When does the semester start?"
+            "Here’s what I can help you with:\n\n"
+            "• 📍 `/where [location]` — Find places on campus (e.g., Ocean Lab, C3, IRC).\n\n"
+            "• 🧺 *Locker hours* — Ask for locker access times in any college.\n\n"
+            "• 🍽 *Servery hours* — Ask for meal times in your college or the coffee bar.\n\n"
+            "• ❓ *University FAQs* — Ask about documents, laundry, residence permits, etc.\n\n"
+            "• 🗓 *College events* — Get updates on announcements and upcoming activities.\n\n"
+            "💬 Just type your question — I’ll understand natural language too!\n\n"
+            "🔒 Bot is limited to university-related queries only."
     )
 
 
