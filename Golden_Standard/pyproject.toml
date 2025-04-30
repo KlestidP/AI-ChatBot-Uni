@@ -3,7 +3,7 @@ name = "uni-ai-chatbot"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "faiss-cpu>=1.10.0",
     "langchain>=0.3.23",
