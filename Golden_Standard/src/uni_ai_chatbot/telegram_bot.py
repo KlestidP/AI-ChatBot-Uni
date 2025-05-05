@@ -1,21 +1,19 @@
 import os
-import json
 import logging
 import re
 from pathlib import Path
 from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from langchain.chains import RetrievalQA
-from langchain_community.document_loaders import TextLoader
+from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
-from langchain_text_splitters import CharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_mistralai import MistralAIEmbeddings
 from langchain_mistralai import ChatMistralAI
-from uni_ai_chatbot.resources import get_resource
+from uni_ai_chatbot.resources import load_faq_answers
 from dotenv import load_dotenv
-from uni_ai_chatbot.campus_map_data import campus_map
+from uni_ai_chatbot.campus_map_data import load_campus_map
 from uni_ai_chatbot.locker_hours_loader import load_locker_hours
-from uni_ai_chatbot.servery_hours_loader import load_servery_hours
 from difflib import get_close_matches
 
 load_dotenv()
@@ -30,20 +28,38 @@ if not TELEGRAM_TOKEN:
 if not MISTRAL_API_KEY:
     raise ValueError("MISTRAL_API_KEY is not set in environment variables")
 
-faq_file_path = Path(__file__).parent / "faq_responses.json"
-with open(faq_file_path, encoding="utf-8") as f:
-    FAQ_ANSWERS = json.load(f)
+FAQ_ANSWERS = load_faq_answers()
+
+
+def get_resource(relative_path):
+    # Helper function to handle resource paths
+    base_dir = Path(__file__).parent
+    return str(base_dir / relative_path)
 
 
 def initialize_qa_chain():
-    file_path_1 = get_resource(relative_path=Path("data.txt"))
-    file_path_2 = get_resource(relative_path=Path("map_data.txt"))  # added map data
+    # Create documents directly from database content
+    documents = []
 
-    loader = TextLoader(file_path_1)
-    loader2 = TextLoader(file_path_2)
+    # Add FAQ data as documents
+    faq_data = load_faq_answers()
+    for question, answer in faq_data.items():
+        doc_content = f"Question: {question}\nAnswer: {answer}"
+        documents.append(Document(page_content=doc_content))
 
-    documents = loader.load() + loader2.load()  # combine both
-    text_splitter = CharacterTextSplitter(chunk_size=200, chunk_overlap=20)
+    # Add campus location data as documents
+    campus_data = load_campus_map()
+    for location in campus_data:
+        location_type = location.get("type", "Unknown")
+        area_name = location["campus_areas"]["name"] if location.get("campus_areas") else "Unknown area"
+        doc_content = f"Location: {location['name']}\nType: {location_type}\nArea: {area_name}"
+        documents.append(Document(page_content=doc_content))
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=200,
+        chunk_overlap=20,
+        separators=["\\n\\n", "\\n", ".", " ", ""]
+    )
     split_docs = text_splitter.split_documents(documents)
     embeddings = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
     vector_store = FAISS.from_texts([doc.page_content for doc in split_docs], embeddings)
@@ -57,7 +73,85 @@ def initialize_qa_chain():
     return RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
 
 
-def resolve_location_name(query):
+def parse_campus_map_data(data):
+    """Parse campus map data from Supabase into a more usable format"""
+    campus_map = []
+    for location in data:
+        location_info = {
+            "name": location["name"],
+            "type": location["type"],
+            "aliases": [],  # Placeholder for aliases
+            "direction": "central",  # Default placeholder - would need to be in your actual data
+            "category": location["type"],  # Using type as category
+        }
+
+        if location.get("campus_areas"):
+            location_info["area"] = location["campus_areas"]["name"]
+
+            # Map areas to directions (simplified example)
+            area_to_direction = {
+                "North Campus": "north",
+                "South Campus": "south",
+                "East Campus": "east",
+                "West Campus": "west",
+                "Central Campus": "central"
+            }
+            location_info["direction"] = area_to_direction.get(location_info["area"], "central")
+
+        campus_map.append(location_info)
+    return campus_map
+
+
+def parse_locker_hours(data):
+    """Parse locker hours data from Supabase into a usable format for the bot"""
+    locker_hours = {}
+
+    for record in data:
+        college_name = record["colleges"]["name"] if record.get("colleges") else "Unknown"
+        day_name = record["days"]["name"].lower() if record.get("days") else "Unknown"
+        basement = record["basement"].upper() if record.get("basement") else "Unknown"
+
+        if record.get("time_ranges"):
+            time_info = f"{record['time_ranges']['start_time']} - {record['time_ranges']['end_time']}"
+        else:
+            time_info = "Hours not specified"
+
+        status = record.get("status", "Unknown")
+
+        # Initialize nested dictionaries if needed
+        if college_name not in locker_hours:
+            locker_hours[college_name] = {}
+        if day_name not in locker_hours[college_name]:
+            locker_hours[college_name][day_name] = {}
+
+        locker_hours[college_name][day_name][basement] = time_info
+
+    return locker_hours
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a message when the command /start is issued."""
+    await update.message.reply_text(
+        "Hi! I'm your University Info Bot. Ask me any question about college schedules, fees, or events!"
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a message when the command /help is issued."""
+    await update.message.reply_text(
+        "Here's what I can help you with:\n\n"
+        "• 📍 `/where [location]` — Find places on campus (e.g., Ocean Lab, C3, IRC).\n\n"
+        "• 🧺 *Locker hours* — Ask for locker access times in any college.\n\n"
+        "• 🍽 *Servery hours* — Ask for meal times in your college or the coffee bar.\n\n"
+        "• ❓ *University FAQs* — Ask about documents, laundry, residence permits, etc.\n\n"
+        "• 🗓 *College events* — Get updates on announcements and upcoming activities.\n\n"
+        "💬 Just type your question — I'll understand natural language too!\n\n"
+        "🔒 Bot is limited to university-related queries only."
+    )
+
+
+def resolve_location_name(query, campus_map):
+    """Find a location name in the campus map data using fuzzy matching"""
     names = []
     lookup = {}
 
@@ -74,33 +168,9 @@ def resolve_location_name(query):
         return lookup[match]["name"]
     return None
 
-# determine location info using fuzzy name matching
-def get_location_info(query):
-    # Build search index using names and aliases
-    names = []
-    lookup = {}
 
-    for place in campus_map:
-        main_name = place["name"]
-        names.append(main_name)
-        lookup[main_name.lower()] = place
-
-        for alias in place.get("aliases", []):
-            names.append(alias)
-            lookup[alias.lower()] = place
-
-    # Match user query against names/aliases
-    matches = get_close_matches(query.lower(), names, n=1, cutoff=0.6)
-    if matches:
-        match = matches[0].lower()
-        place = lookup[match]
-        return f"{place['name']} is in the {place['direction'].lower()} part of campus and is a {place['category'].lower()} facility."
-
-    return "Sorry, I couldn't find that place on the map."
-
-
-# provide basic directions from Main Gate to the target location
-def get_directional_instructions(query):
+def get_location_info(query, campus_map):
+    """Get information about a campus location"""
     names = []
     lookup = {}
 
@@ -117,49 +187,28 @@ def get_directional_instructions(query):
     if matches:
         match = matches[0].lower()
         place = lookup[match]
-        return f"From the Main Gate, head toward the {place['direction'].lower()} to reach {place['name']}."
+        return f"{place['name']} is in the {place['direction'].lower()} part of campus and is a {place['type'].lower()} facility."
 
     return "Sorry, I couldn't find that place on the map."
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /start is issued."""
-    await update.message.reply_text(
-        "Hi! I'm your University Info Bot. Ask me any question about college schedules, fees, or events!"
-    )
 
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /help is issued."""
-    await update.message.reply_text(
-            "Here’s what I can help you with:\n\n"
-            "• 📍 `/where [location]` — Find places on campus (e.g., Ocean Lab, C3, IRC).\n\n"
-            "• 🧺 *Locker hours* — Ask for locker access times in any college.\n\n"
-            "• 🍽 *Servery hours* — Ask for meal times in your college or the coffee bar.\n\n"
-            "• ❓ *University FAQs* — Ask about documents, laundry, residence permits, etc.\n\n"
-            "• 🗓 *College events* — Get updates on announcements and upcoming activities.\n\n"
-            "💬 Just type your question — I’ll understand natural language too!\n\n"
-            "🔒 Bot is limited to university-related queries only."
-    )
-
-
-# respond to /where command with location info
 async def where_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Respond to /where command with location info"""
     query = ' '.join(context.args)
     if not query:
         await update.message.reply_text(
             "Please provide a location name.\nFor example: /where Ocean Lab"
         )
         return
-    response = get_location_info(query)
+
+    campus_map = context.bot_data["campus_map"]
+    response = get_location_info(query, campus_map)
     await update.message.reply_text(response)
 
 
-# handle all text messages (including "how do I get to" questions)
-# store temp state for direction questions
-user_direction_queries = {}
-
 async def handle_locker_hours(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle queries about locker hours"""
     text = update.message.text.lower()
     locker_data = context.bot_data["locker_hours"]
 
@@ -183,12 +232,16 @@ async def handle_locker_hours(update: Update, context: ContextTypes.DEFAULT_TYPE
         "mercator college": "Mercator College",
     }
 
-    canonical = next((real for alias, real in aliases.items() if alias in text), None)
-    if not canonical:
+    matched_college = None
+    for alias, real in aliases.items():
+        if alias in text:
+            matched_college = real
+            break
+
+    if not matched_college:
         await update.message.reply_text(
             "❓ Please mention the college (Krupp, College III, Nordmetall, or Mercator).")
         return
-    matched_college = canonical
 
     basement = None
     m = re.search(r'\b(?:basement\s*)?([abcdf])\b', text, re.I)
@@ -230,82 +283,16 @@ async def handle_locker_hours(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await update.message.reply_text(message, parse_mode="Markdown")
 
-async def handle_servery_hours(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
-    data  = context.bot_data["servery_hours"]
-
-    colleges = {
-        "Alfried Krupp College": ["krupp", "alfried krupp"],
-        "College Nordmetall & College 3": ["nordmetall", "college 3", "college iii", "c3", "nord"],
-        "Mercator College": ["mercator"],
-        "Coffee Bar": ["coffee bar", "bar"]
-    }
-    college = next((c for c, vs in colleges.items() if any(v in text for v in vs)), None)
-    if not college:
-        await update.message.reply_text("❓ Which servery? (Krupp, Nordmetall/College 3, Mercator or Coffee Bar)")
-        return
-
-    # optional keywords
-    meal  = next((m for m in ["breakfast", "lunch", "dinner", "servery"] if m in text), None)
-    day   = next((d for d in ["monday", "friday", "saturday", "sunday", "holiday"] if d in text), None)
-
-    msg = f"🍽 **Servery Hours – {college}**\n"
-    periods = data[college]
-
-    for period, meals in periods.items():
-        if day and day not in period:
-            continue
-        msg += f"\n*{period.title()}*\n"
-        for m, hrs in meals.items():
-            if meal and meal != m:
-                continue
-            msg += f"• {m.title()}: {hrs}\n"
-
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-
-
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle all non-command messages"""
     user_id = update.effective_user.id
     text = update.message.text.lower()
-
-    # Step 1: if we're waiting for the user's location after asking
-    if user_id in user_direction_queries:
-        # inside handle_message() where user gives origin:
-        origin = resolve_location_name(text)
-        target = resolve_location_name(user_direction_queries.pop(user_id))
-
-        if not origin or not target:
-            await update.message.reply_text(
-                "Sorry, I couldn't understand the location names. Try using different words.")
-            return
-
-        ai_input = f"How can I get from {origin} to {target}?"
-        await update.message.reply_text("Thinking...")
-        qa_chain = context.bot_data["qa_chain"]
-        response = qa_chain.invoke(ai_input)
-        await update.message.reply_text(response['result'])
-        return
-
-    # Step 2: if it's a direction question
-    if "how do i get to" in text or "how can i get to" in text or "how to reach" in text:
-        location_query = text.replace("how do i get to", "").replace("how can i get to", "").replace("how to reach",
-                                                                                                     "").strip()
-        if location_query:
-            user_direction_queries[user_id] = location_query
-            await update.message.reply_text("Where are you standing right now?")
-        else:
-            await update.message.reply_text("Please specify where you want to go.")
-        return
+    campus_map = context.bot_data["campus_map"]
 
     # Check if asking for locker hours
     if "locker" in text and ("open" in text or "hours" in text):
         await handle_locker_hours(update, context)
-        return
-
-    if any(k in text for k in ["servery", "mensa", "opening hours"]) and "locker" not in text:
-        await handle_servery_hours(update, context)
         return
 
     # Step 2.5: fuzzy match against FAQ keywords
@@ -339,13 +326,22 @@ async def set_bot_commands(application):
 
 def main() -> None:
     application = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    # Initialize QA chain
     application.bot_data["qa_chain"] = initialize_qa_chain()
-    application.bot_data["locker_hours"] = load_locker_hours()
-    application.bot_data["servery_hours"] = load_servery_hours()
+
+    # Load data from Supabase and parse into usable formats
+    raw_campus_map = load_campus_map()
+    application.bot_data["campus_map"] = parse_campus_map_data(raw_campus_map)
+
+    raw_locker_hours = load_locker_hours()
+    application.bot_data["locker_hours"] = parse_locker_hours(raw_locker_hours)
+
+    # Add command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("where", where_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     application.post_init = set_bot_commands
 
