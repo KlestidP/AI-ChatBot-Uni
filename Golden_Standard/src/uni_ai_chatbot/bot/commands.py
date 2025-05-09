@@ -1,0 +1,97 @@
+from telegram import Update
+from telegram.constants import ParseMode
+from telegram.ext import ContextTypes
+from uni_ai_chatbot.bot.location_handlers import find_location_by_name_or_alias, show_location_details, \
+    handle_location_with_ai
+from uni_ai_chatbot.utils.message_utils import extract_feature_keywords, find_locations_by_feature
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a message when the command /start is issued."""
+    await update.message.reply_text(
+        "Hi! I'm your University Info Bot. Ask me any question about college schedules, fees, or events!"
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a message when the command /help is issued."""
+    await update.message.reply_text(
+        "Here's what I can help you with:\n\n"
+        "• 📍 `/where [location]` — Find places on campus (e.g., Ocean Lab, C3, IRC).\n\n"
+        "• 🔍 `/find [feature]` — Find places with specific features (e.g., printer, food, study).\n\n"
+        "• 🧺 *Locker hours* — Ask for locker access times in any college.\n\n"
+        "• 🍽 *Servery hours* — Ask for meal times in your college or the coffee bar.\n\n"
+        "• ❓ *University FAQs* — Ask about documents, laundry, residence permits, etc.\n\n"
+        "• 🗓 *College events* — Get updates on announcements and upcoming activities.\n\n"
+        "💬 Just type your question — I'll understand natural language too!\n\n"
+        "🔒 Bot is limited to university-related queries only.",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def where_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Respond to /where command with location info and venue"""
+    query = ' '.join(context.args)
+    if not query:
+        await update.message.reply_text(
+            "Please provide a location name.\nFor example: /where Ocean Lab"
+        )
+        return
+
+    campus_map = context.bot_data["campus_map"]
+    location = find_location_by_name_or_alias(campus_map, query)
+
+    if location:
+        await show_location_details(update, location)
+    else:
+        await update.message.reply_text(
+            "Sorry, I couldn't find that location. Try asking in a different way or try the /find command."
+        )
+
+
+async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Find locations with specific features"""
+    query = ' '.join(context.args)
+    if not query:
+        await update.message.reply_text(
+            "Please specify what you're looking for.\nFor example: /find printer or /find food"
+        )
+        return
+
+    campus_map = context.bot_data["campus_map"]
+    keywords = extract_feature_keywords(query)
+
+    # If no keywords were extracted, use the whole query as a single keyword
+    if not keywords:
+        keywords = [query.lower()]
+
+    locations = find_locations_by_feature(campus_map, keywords)
+
+    if locations:
+        if len(locations) == 1:
+            # Only one location found, show it directly
+            location = locations[0]
+            await show_location_details(update, location)
+        else:
+            # Multiple locations found, show a keyboard to select
+            keyboard = []
+            for loc in locations[:8]:  # Limit to 8 options
+                keyboard.append([InlineKeyboardButton(
+                    text=loc['name'],
+                    callback_data=f"location:{loc['id']}"
+                )])
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            feature_text = " and ".join(keywords)
+            await update.message.reply_text(
+                f"I found {len(locations)} places with {feature_text}. Which one would you like to see?",
+                reply_markup=reply_markup
+            )
+    else:
+        # No locations found in the database, fall back to AI
+        await update.message.reply_text(
+            "I don't have specific information about places with those features. Let me think about it..."
+        )
+        # Fall back to AI
+        await handle_location_with_ai(update, context, query)
