@@ -1,7 +1,6 @@
 from os import getenv
 from dotenv import load_dotenv
 from supabase import create_client
-from langchain_core.documents import Document
 
 load_dotenv()
 supabase = create_client(getenv("SUPABASE_URL"), getenv("SUPABASE_SERVICE_ROLE_KEY"))
