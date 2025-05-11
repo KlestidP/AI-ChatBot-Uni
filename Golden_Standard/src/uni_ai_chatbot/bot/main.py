@@ -4,12 +4,13 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram import BotCommand
 from dotenv import load_dotenv
 from uni_ai_chatbot.bot.commands import start, help_command, where_command, find_command
-from uni_ai_chatbot.bot.conversation import handle_message
+from uni_ai_chatbot.bot.conversation import handle_message  # Updated import
 from uni_ai_chatbot.bot.callbacks import handle_location_callback
 from uni_ai_chatbot.services.qa_service_supabase import initialize_qa_chain, get_scoped_qa_chain
 from uni_ai_chatbot.data.campus_map_data import load_campus_map
 from uni_ai_chatbot.data.locker_hours_loader import load_locker_hours
 from uni_ai_chatbot.services.locker_service import parse_locker_hours
+from uni_ai_chatbot.tools.tools_architecture import tool_registry  # Import tool registry
 
 load_dotenv()
 logging.basicConfig(
@@ -45,6 +46,9 @@ def main() -> None:
     locker_qa_chain = get_scoped_qa_chain(vector_store, llm, "locker")
     qa_chain = get_scoped_qa_chain(vector_store, llm, "qa")
 
+    # Store LLM instance for tool classifier
+    application.bot_data["llm"] = llm
+
     # Store all QA components in bot_data
     application.bot_data["general_qa_chain"] = general_qa_chain
     application.bot_data["location_qa_chain"] = location_qa_chain
@@ -54,6 +58,9 @@ def main() -> None:
     # Load data from Supabase
     application.bot_data["campus_map"] = load_campus_map()
     application.bot_data["locker_hours"] = parse_locker_hours(load_locker_hours())
+
+    # Validate that all necessary tools are registered
+    logger.info(f"Registered tools: {[tool.name for tool in tool_registry.get_all_tools()]}")
 
     # Add command handlers
     application.add_handler(CommandHandler("start", start))
