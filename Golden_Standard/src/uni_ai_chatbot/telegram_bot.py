@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from uni_ai_chatbot.campus_map_data import campus_map
 from uni_ai_chatbot.locker_hours_loader import load_locker_hours
 from uni_ai_chatbot.servery_hours_loader import load_servery_hours
+from uni_ai_chatbot.handbook_loader import load_handbook_docs
 from difflib import get_close_matches
 
 load_dotenv()
@@ -35,25 +36,26 @@ with open(faq_file_path, encoding="utf-8") as f:
     FAQ_ANSWERS = json.load(f)
 
 
+
 def initialize_qa_chain():
-    file_path_1 = get_resource(relative_path=Path("data.txt"))
-    file_path_2 = get_resource(relative_path=Path("map_data.txt"))  # added map data
+    docs  = TextLoader(get_resource(Path("data.txt"))).load()
+    docs += TextLoader(get_resource(Path("map_data.txt"))).load()
 
-    loader = TextLoader(file_path_1)
-    loader2 = TextLoader(file_path_2)
+    docs += load_handbook_docs()
 
-    documents = loader.load() + loader2.load()  # combine both
-    text_splitter = CharacterTextSplitter(chunk_size=200, chunk_overlap=20)
-    split_docs = text_splitter.split_documents(documents)
+    splitter = CharacterTextSplitter(chunk_size=200, chunk_overlap=20)
+    split_small = splitter.split_documents(docs[:2])  # first two items are small
+    full_corpus = split_small + docs[2:]              # append handbook chunks
+
     embeddings = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
-    vector_store = FAISS.from_texts([doc.page_content for doc in split_docs], embeddings)
-    retriever = vector_store.as_retriever()
-    llm = ChatMistralAI(
-        model="mistral-large-latest",
-        temperature=0,
-        max_retries=2,
-        api_key=MISTRAL_API_KEY
-    )
+    vector_store = FAISS.from_documents(full_corpus, embeddings)
+    retriever = vector_store.as_retriever(search_kwargs={"k": 6})
+
+    llm = ChatMistralAI(model="mistral-large-latest",
+                        temperature=0,
+                        max_retries=2,
+                        api_key=MISTRAL_API_KEY)
+
     return RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
 
 
