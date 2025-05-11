@@ -9,6 +9,7 @@ from supabase import create_client
 
 from uni_ai_chatbot.data.resources import load_faq_answers
 from uni_ai_chatbot.data.campus_map_data import load_campus_map
+from uni_ai_chatbot.data.locker_hours_loader import load_locker_hours
 
 # Setup logging
 logging.basicConfig(
@@ -29,7 +30,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 
 def create_documents():
-    """Create documents from FAQ and campus data"""
+    """Create documents from FAQ, campus data, and locker data with tool classifications"""
     documents = []
     logger.info("Loading FAQ data...")
 
@@ -39,7 +40,7 @@ def create_documents():
         doc_content = f"Question: {question}\nAnswer: {answer}"
         documents.append(Document(
             page_content=doc_content,
-            metadata={"type": "faq", "question": question}
+            metadata={"type": "faq", "question": question, "tool": "qa"}
         ))
 
     logger.info(f"Loaded {len(faq_data)} FAQ entries")
@@ -62,11 +63,39 @@ def create_documents():
             metadata={
                 "type": "location",
                 "name": location['name'],
-                "id": location['id']
+                "id": location['id'],
+                "tool": "location"
             }
         ))
 
     logger.info(f"Loaded {len(campus_data)} campus locations")
+
+    # Add locker hours data as documents
+    logger.info("Loading locker data...")
+    locker_data = load_locker_hours()
+    for record in locker_data:
+        college_name = record["colleges"]["name"] if record.get("colleges") else "Unknown"
+        day_name = record["days"]["name"] if record.get("days") else "Unknown"
+        basement = record["basement"] if record.get("basement") else "Unknown"
+
+        if record.get("time_ranges"):
+            time_info = f"{record['time_ranges']['start_time']} - {record['time_ranges']['end_time']}"
+        else:
+            time_info = "Hours not specified"
+
+        doc_content = f"Locker access for {college_name}, {day_name}, Basement {basement}: {time_info}"
+        documents.append(Document(
+            page_content=doc_content,
+            metadata={
+                "type": "locker",
+                "college": college_name,
+                "day": day_name,
+                "basement": basement,
+                "tool": "locker"
+            }
+        ))
+
+    logger.info(f"Loaded {len(locker_data)} locker hours records")
     return documents
 
 
@@ -93,7 +122,7 @@ def process_and_save_to_supabase():
     logger.info("Storing embeddings in Supabase...")
     # First, clear the existing documents
     supabase_client.table("documents").delete().execute()
-    
+
     # Create a new vector store
     vector_store = SupabaseVectorStore.from_documents(
         documents=split_docs,
@@ -111,8 +140,9 @@ if __name__ == "__main__":
     try:
         # First check if setup was done
         from setup_pgvector import setup_pgvector
+
         setup_pgvector()
-        
+
         # Then process and save documents
         vector_store = process_and_save_to_supabase()
         print("Successfully created and saved embeddings to Supabase")

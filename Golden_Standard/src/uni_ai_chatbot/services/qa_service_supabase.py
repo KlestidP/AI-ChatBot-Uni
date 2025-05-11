@@ -8,6 +8,7 @@ from supabase import create_client
 
 logger = logging.getLogger(__name__)
 
+
 def initialize_qa_chain():
     """Initialize the QA chain using Supabase vector store"""
     MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
@@ -21,24 +22,19 @@ def initialize_qa_chain():
 
     try:
         logger.info("Initializing QA chain with Supabase vector store")
-        
+
         # Set up embeddings
         embeddings = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
-        
+
         # Create Supabase client
         supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        
-        # Create vector store
+
+        # Create the base vector store
         vector_store = SupabaseVectorStore(
             client=supabase_client,
             embedding=embeddings,
             table_name="documents",
             query_name="match_documents"
-        )
-        
-        # Get retriever
-        retriever = vector_store.as_retriever(
-            search_kwargs={"k": 4}  # Get top 4 most relevant documents
         )
 
         # Initialize the language model
@@ -49,13 +45,44 @@ def initialize_qa_chain():
             api_key=MISTRAL_API_KEY
         )
 
-        logger.info("Successfully initialized QA chain with Supabase vector store")
-        return RetrievalQA.from_chain_type(
-            llm=llm, 
-            retriever=retriever,
-            return_source_documents=True  # This will return the source documents used to generate the answer
+        # Create the base QA chain with the ability to access all data
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            retriever=vector_store.as_retriever(search_kwargs={"k": 4}),
+            return_source_documents=True
         )
+
+        logger.info("Successfully initialized QA chain with Supabase vector store")
+        return vector_store, llm, qa_chain
 
     except Exception as e:
         logger.error(f"Error initializing QA chain: {e}")
         raise
+
+
+def get_scoped_qa_chain(vector_store, llm, tool_type):
+    """
+    Get a QA chain that only retrieves documents relevant to a specific tool
+
+    Args:
+        vector_store: The base vector store to create a filtered retriever from
+        llm: The language model to use
+        tool_type: The tool type to filter documents by ('qa', 'location', or 'locker')
+
+    Returns:
+        A QA chain that only queries documents of the specified tool type
+    """
+    # Create a filtered retriever that only returns documents of the specified tool type
+    retriever = vector_store.as_retriever(
+        search_kwargs={
+            "k": 4,
+            "filter": {"tool": tool_type}
+        }
+    )
+
+    # Create a QA chain with the filtered retriever
+    return RetrievalQA.from_chain_type(
+        llm=llm,
+        retriever=retriever,
+        return_source_documents=True
+    )

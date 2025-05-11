@@ -1,10 +1,11 @@
 # Use Python 3.11 as base image
 FROM python:3.11
 
+ENV COMPOSE_BAKE=true
+
 # Set working directory
 WORKDIR /app
 
-RUN COMPOSE_BAKE=true
 # Install required system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
