@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: unless-stopped
     environment:
       MISTRAL_API_KEY:            ${MISTRAL_API_KEY}
       HF_TOKEN:                   ${HF_TOKEN}
@@ -12,4 +11,4 @@ services:
       SUPABASE_SERVICE_ROLE_KEY:  ${SUPABASE_SERVICE_ROLE_KEY}
     volumes:
         - ./:/app
-    command: ["uv", "run", "python3", "src/uni_ai_chatbot/main.py"]
+    restart: unless-stopped

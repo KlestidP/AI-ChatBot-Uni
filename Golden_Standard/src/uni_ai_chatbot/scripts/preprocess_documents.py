@@ -24,13 +24,12 @@ if not MISTRAL_API_KEY:
     raise ValueError("MISTRAL_API_KEY is not set in environment variables")
 
 
-def get_index_path():
-    """Get the path to save the FAISS index"""
-    base_dir = Path(__file__).parent
-    data_dir = base_dir / "uni_ai_chatbot" / "data" / "vectorstore"
-    # Create directory if it doesn't exist
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return str(data_dir)
+def get_index_path() -> str:
+    """Get the full file path to save the FAISS index, relative to the src directory."""
+    project_root = Path(__file__).resolve().parents[2]
+    vectorstore_dir = project_root / "uni_ai_chatbot" / "data" / "vectorstore"
+    vectorstore_dir.mkdir(parents=True, exist_ok=True)
+    return str(vectorstore_dir / "index.faiss")
 
 
 def create_documents():
