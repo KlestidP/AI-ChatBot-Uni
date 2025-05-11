@@ -17,25 +17,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     text = update.message.text.lower()
     campus_map = context.bot_data["campus_map"]
 
-    # Check if asking for locker hours
-    if "locker" in text and ("open" in text or "hours" in text):
+    # Step 1: Determine the query type (locker, location, or general QA)
+    query_type = determine_query_type(text)
+    logger.info(f"Determined query type: {query_type}")
+
+    # Step 2: Handle based on query type
+    if query_type == "locker":
         await handle_locker_hours(update, context)
         return
 
-    # Check if asking about location features like printers, food, study areas
-    location_features = ["print", "printer", "food", "eat", "study", "studying",
-                         "coffee", "quiet", "library", "ify"]
-
-    is_location_query = False
-    for feature in location_features:
-        if feature in text:
-            is_location_query = True
-            break
-
-    is_where_query = any(word in text for word in ["where", "find", "location", "how to get to"])
-
-    # Process location-related queries
-    if is_location_query or is_where_query:
+    elif query_type == "location":
+        # Process location-related queries
         # Extract keywords to find locations with those features
         keywords = extract_feature_keywords(text)
 
@@ -75,44 +67,157 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                         return
 
         # If we reach here, it's a location query but we couldn't find a match
-        # Fall back to AI for this location query
-        await handle_location_with_ai(update, context, text)
+        # Fall back to AI for this location query, but using the location-specific QA chain
+        await handle_location_with_ai_scoped(update, context, text)
         return
 
-    # Step 2.5: fuzzy match against FAQ keywords
-    from uni_ai_chatbot.data.resources import load_faq_answers
-    FAQ_ANSWERS = load_faq_answers()
-    question_keywords = list(FAQ_ANSWERS.keys())
-    matched = get_close_matches(text.lower(), question_keywords, n=1, cutoff=0.6)
+    else:  # query_type == "qa"
+        # Step 2.5: fuzzy match against FAQ keywords
+        from uni_ai_chatbot.data.resources import load_faq_answers
+        FAQ_ANSWERS = load_faq_answers()
 
-    if matched:
-        answer = FAQ_ANSWERS[matched[0]]
-        await update.message.reply_text(answer, parse_mode="Markdown")
-        return
+        # Improve fuzzy matching by checking individual words and the entire query
+        matched = None
 
-    # Step 3: fallback to AI QA system for non-location queries
-    qa_chain = context.bot_data["qa_chain"]
-    await update.message.reply_text("Thinking...")
+        # Check the complete query first with a lower cutoff
+        question_keywords = list(FAQ_ANSWERS.keys())
+        matched = get_close_matches(text.lower(), question_keywords, n=1, cutoff=0.5)
+
+        # If no match, try individual words with important meaning
+        if not matched:
+            for word in text.split():
+                if len(word) > 3:  # Skip very short words
+                    word_matches = get_close_matches(word.lower(), question_keywords, n=1, cutoff=0.5)
+                    if word_matches:
+                        matched = word_matches
+                        break
+
+        # Direct matching for important keywords that might be missed by fuzzy matching
+        if not matched:
+            for keyword in question_keywords:
+                if any(important in text.lower() for important in ['laundry', 'washing', 'dryer', 'laundromat', 'wash']):
+                    if any(important in keyword.lower() for important in ['laundry', 'washing', 'dryer', 'laundromat', 'wash']):
+                        matched = [keyword]
+                        break
+
+        if matched:
+            answer = FAQ_ANSWERS[matched[0]]
+            await update.message.reply_text(answer, parse_mode="Markdown")
+            return
+
+        # Step 3: fallback to AI QA system for non-location queries
+        qa_chain = context.bot_data["qa_chain"]  # This now uses the qa-specific chain
+        await update.message.reply_text("Thinking...")
+        try:
+            response = qa_chain.invoke(text)
+            # Extract the result and source documents
+            result = response['result']
+
+            # Check if we have source documents
+            if 'source_documents' in response and response['source_documents']:
+                # Add a "Sources:" section to show where the information came from
+                sources = set()
+                for doc in response['source_documents']:
+                    if 'type' in doc.metadata:
+                        if doc.metadata['type'] == 'faq' and 'question' in doc.metadata:
+                            sources.add(f"FAQ: {doc.metadata['question']}")
+                        elif doc.metadata['type'] == 'location' and 'name' in doc.metadata:
+                            sources.add(f"Location: {doc.metadata['name']}")
+
+                if sources:
+                    result += "\n\n*Sources:*\n- " + "\n- ".join(sources)
+
+            await update.message.reply_text(result, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Error processing: {e}")
+            await update.message.reply_text("Sorry, I couldn't process your question.")
+
+
+def determine_query_type(text):
+    """Determine what type of query the user is asking."""
+    text = text.lower()
+
+    # Check if asking for locker hours
+    if "locker" in text and ("open" in text or "hours" in text or "time" in text or "access" in text):
+        return "locker"
+
+    # Special cases for common queries that should be handled by FAQ
+    if any(word in text for word in ["laundry", "washing", "dryer"]):
+        return "qa"
+
+    # Location-related keywords
+    location_features = ["print", "printer", "food", "eat", "study", "studying",
+                         "coffee", "quiet", "library", "ify"]
+    location_indicators = ["where", "find", "location", "how to get to", "building", "room", "campus"]
+
+    # Check if it's a location query
+    is_location_query = any(feature in text for feature in location_features) or \
+                        any(indicator in text for indicator in location_indicators)
+
+    if is_location_query:
+        return "location"
+
+    # Default to general QA
+    return "qa"
+
+
+async def handle_location_with_ai_scoped(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
+    """Use location-specific AI to understand and respond to location-related queries"""
+    location_qa_chain = context.bot_data["location_qa_chain"]
+    campus_map = context.bot_data["campus_map"]
+
     try:
-        response = qa_chain.invoke(text)
-        # Extract the result and source documents
-        result = response['result']
+        # Ask the AI about the location, using the location-scoped QA chain
+        ai_query = f"What places on campus match this description: {query}? Please mention specific location names only."
+        response = location_qa_chain.invoke(ai_query)
+        response_text = response['result']
 
-        # Check if we have source documents
-        if 'source_documents' in response and response['source_documents']:
-            # Add a "Sources:" section to show where the information came from
-            sources = set()
-            for doc in response['source_documents']:
-                if 'type' in doc.metadata:
-                    if doc.metadata['type'] == 'faq' and 'question' in doc.metadata:
-                        sources.add(f"FAQ: {doc.metadata['question']}")
-                    elif doc.metadata['type'] == 'location' and 'name' in doc.metadata:
-                        sources.add(f"Location: {doc.metadata['name']}")
+        # The rest of the function is the same as handle_location_with_ai
+        # Extract location names from the AI's response
+        import re
+        potential_locations = []
+        lines = response_text.split('\n')
+        for line in lines:
+            if ":" in line:  # Looking for "Location name: description" format
+                potential_loc = line.split(':')[0].strip()
+                potential_locations.append(potential_loc)
+            else:
+                # Try to find location names in the text
+                words = re.findall(r'\b[A-Z][a-zA-Z\s]+(College|Hall|Lab|Center|Centre)\b', line)
+                potential_locations.extend(words)
 
-            if sources:
-                result += "\n\n*Sources:*\n- " + "\n- ".join(sources)
+        # If no locations found in formatted response, try looking for capitalized words that might be locations
+        if not potential_locations:
+            words = re.findall(r'\b[A-Z][a-zA-Z\s]+(College|Hall|Lab|Center|Centre|Building)\b', response_text)
+            potential_locations = words
 
-        await update.message.reply_text(result, parse_mode="Markdown")
+        # Match potential locations against our database
+        matched_locations = []
+        for pot_loc in potential_locations:
+            location = find_location_by_name_or_alias(campus_map, pot_loc)
+            if location and location not in matched_locations:
+                matched_locations.append(location)
+
+        if matched_locations:
+            # Locations found, show options
+            keyboard = []
+            for loc in matched_locations[:8]:  # Limit to 8 options
+                keyboard.append([InlineKeyboardButton(
+                    text=loc['name'],
+                    callback_data=f"location:{loc['id']}"
+                )])
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(
+                f"Based on your question, here are some relevant places:",
+                reply_markup=reply_markup
+            )
+        else:
+            # No matches, just show the AI's response
+            await update.message.reply_text(
+                f"I couldn't find specific locations matching '{query}', but here's what I know:\n\n{response_text}"
+            )
+
     except Exception as e:
-        logger.error(f"Error processing: {e}")
-        await update.message.reply_text("Sorry, I couldn't process your question.")
+        logger.error(f"Error processing with AI: {e}")
+        await update.message.reply_text("Sorry, I'm having trouble understanding that location request.")

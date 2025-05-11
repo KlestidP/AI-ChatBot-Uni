@@ -83,14 +83,18 @@ async def show_location_details(update: Update, location, is_callback=False):
 
 
 async def handle_location_with_ai(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
-    """Use AI to understand and respond to location-related queries"""
-    qa_chain = context.bot_data["qa_chain"]
+    """
+    Use AI to understand and respond to location-related queries
+    This version uses the location-scoped QA chain for more accurate results
+    """
+    # Use the location-specific QA chain instead of the general one
+    location_qa_chain = context.bot_data["location_qa_chain"]
     campus_map = context.bot_data["campus_map"]
 
     try:
         # Ask the AI about the location
         ai_query = f"What places on campus match this description: {query}? Please mention specific location names only."
-        response = qa_chain.invoke(ai_query)
+        response = location_qa_chain.invoke(ai_query)
         response_text = response['result']
 
         # Extract location names from the AI's response
