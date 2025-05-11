@@ -3,7 +3,7 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from uni_ai_chatbot.bot.location_handlers import find_location_by_name_or_alias, show_location_details, \
     handle_location_with_ai
-from uni_ai_chatbot.utils.message_utils import extract_feature_keywords, find_locations_by_feature
+from uni_ai_chatbot.data.campus_map_data import extract_feature_keywords, find_locations_by_feature
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 

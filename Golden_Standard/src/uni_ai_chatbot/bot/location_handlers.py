@@ -5,6 +5,10 @@ from telegram.ext import ContextTypes
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from typing import List, Dict, Any, Optional
 
+from uni_ai_chatbot.data.campus_map_data import find_locations_by_feature
+
+from uni_ai_chatbot.data.campus_map_data import extract_feature_keywords
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,11 +89,54 @@ async def show_location_details(update: Update, location, is_callback=False):
 async def handle_location_with_ai(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
     """
     Use AI to understand and respond to location-related queries
-    This version uses the location-scoped QA chain for more accurate results
+    First attempts to find locations using feature keywords, then falls back to AI
     """
-    # Use the location-specific QA chain instead of the general one
-    location_qa_chain = context.bot_data["location_qa_chain"]
+    # First try to extract feature keywords and find matching locations directly
+    feature_keywords = extract_feature_keywords(query)
     campus_map = context.bot_data["campus_map"]
+
+    # If no keywords were extracted, check for location-related terms
+    if not feature_keywords:
+        # Check for common location-related terms
+        location_terms = ["where", "find", "get", "location", "building"]
+        for term in location_terms:
+            if term in query.lower():
+                # Extract possible feature words - use all words that might be relevant
+                feature_words = [word.lower() for word in query.split()
+                                 if len(word) > 3 and word.lower() not in
+                                 ["where", "find", "get", "can", "the", "and", "for", "how", "what"]]
+                feature_keywords = feature_words
+                break
+
+    # Try to find locations with these features
+    if feature_keywords:
+        locations = find_locations_by_feature(campus_map, feature_keywords)
+
+        if locations:
+            if len(locations) == 1:
+                # Only one location found, show it directly
+                location = locations[0]
+                await show_location_details(update, location)
+                return
+            else:
+                # Multiple locations found, show a keyboard to select
+                keyboard = []
+                for loc in locations[:8]:  # Limit to 8 options
+                    keyboard.append([InlineKeyboardButton(
+                        text=loc['name'],
+                        callback_data=f"location:{loc['id']}"
+                    )])
+
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                feature_text = " and ".join(feature_keywords)
+                await update.message.reply_text(
+                    f"I found {len(locations)} places with {feature_text}. Which one would you like to see?",
+                    reply_markup=reply_markup
+                )
+                return
+
+    # If we reach here, no direct matches were found, fall back to AI
+    location_qa_chain = context.bot_data["location_qa_chain"]
 
     try:
         # Ask the AI about the location
