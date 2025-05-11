@@ -4,16 +4,11 @@ from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import FAISS
 from langchain_mistralai import MistralAIEmbeddings
 from langchain_mistralai import ChatMistralAI
+from uni_ai_chatbot.scripts.preprocess_documents import get_index_path
 import logging
 
 logger = logging.getLogger(__name__)
 
-
-def get_index_path():
-    """Get the path where the FAISS index is stored"""
-    base_dir = Path(__file__).parent.parent
-    data_dir = base_dir / "data" / "vectorstore"
-    return str(data_dir)
 
 
 def initialize_qa_chain():
@@ -36,7 +31,7 @@ def initialize_qa_chain():
     try:
         logger.info(f"Loading FAISS index from {index_path}")
         embeddings = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
-        vector_store = FAISS.load_local(index_path, embeddings)
+        vector_store = FAISS.load_local(index_path, embeddings, allow_dangerous_deserialization=True)
         retriever = vector_store.as_retriever()
 
         llm = ChatMistralAI(
