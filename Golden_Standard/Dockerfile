@@ -22,6 +22,8 @@ RUN uv sync --no-install-package uni_ai_chatbot
 # Copy application code
 COPY src ./src
 
+ENV UV_LINK_MODE=copy
+
 RUN uv sync
 
 # Set the default command (this will be overridden by docker-compose)
