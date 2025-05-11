@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from uni_ai_chatbot.bot.commands import start, help_command, where_command, find_command
 from uni_ai_chatbot.bot.conversation import handle_message
 from uni_ai_chatbot.bot.callbacks import handle_location_callback
-from uni_ai_chatbot.services.qa_service import initialize_qa_chain
+from uni_ai_chatbot.services.qa_service_supabase import initialize_qa_chain
 from uni_ai_chatbot.data.campus_map_data import load_campus_map
 from uni_ai_chatbot.data.locker_hours_loader import load_locker_hours
 from uni_ai_chatbot.services.locker_service import parse_locker_hours
@@ -37,7 +37,7 @@ async def set_bot_commands(application):
 def main() -> None:
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Initialize QA chain
+    # Initialize QA chain with Supabase vector store
     application.bot_data["qa_chain"] = initialize_qa_chain()
 
     # Load data from Supabase

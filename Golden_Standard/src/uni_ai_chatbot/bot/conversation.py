@@ -6,6 +6,9 @@ from uni_ai_chatbot.bot.location_handlers import show_location_details, handle_l
     find_location_by_name_or_alias
 from uni_ai_chatbot.utils.message_utils import extract_feature_keywords, find_locations_by_feature
 from uni_ai_chatbot.services.locker_service import handle_locker_hours
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -92,7 +95,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text("Thinking...")
     try:
         response = qa_chain.invoke(text)
-        await update.message.reply_text(response['result'])
+        # Extract the result and source documents
+        result = response['result']
+
+        # Check if we have source documents
+        if 'source_documents' in response and response['source_documents']:
+            # Add a "Sources:" section to show where the information came from
+            sources = set()
+            for doc in response['source_documents']:
+                if 'type' in doc.metadata:
+                    if doc.metadata['type'] == 'faq' and 'question' in doc.metadata:
+                        sources.add(f"FAQ: {doc.metadata['question']}")
+                    elif doc.metadata['type'] == 'location' and 'name' in doc.metadata:
+                        sources.add(f"Location: {doc.metadata['name']}")
+
+            if sources:
+                result += "\n\n*Sources:*\n- " + "\n- ".join(sources)
+
+        await update.message.reply_text(result, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Error processing: {e}")
         await update.message.reply_text("Sorry, I couldn't process your question.")
