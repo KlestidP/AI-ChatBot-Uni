@@ -1,6 +1,5 @@
-import re
 import logging
-from typing import List, Dict, Any, Optional, Tuple, Match
+from typing import List, Dict, Any
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, Message, Chat
 from telegram.ext import ContextTypes
 

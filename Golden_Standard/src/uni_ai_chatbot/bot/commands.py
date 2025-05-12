@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional, Tuple
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message, User, Chat
 from telegram.constants import ParseMode
-from telegram.ext import ContextTypes, CallbackContext
+from telegram.ext import ContextTypes
 from uni_ai_chatbot.data.campus_map_data import find_location_by_name_or_alias, extract_location_name
 from uni_ai_chatbot.bot.location_handlers import show_location_details, handle_location_with_ai
 from uni_ai_chatbot.data.campus_map_data import extract_feature_keywords, find_locations_by_feature
@@ -19,7 +19,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message: Message = update.message
 
     await message.reply_text(
-        f"Hi {user.first_name}! I'm your University Info Bot. Ask me any question about college schedules, fees, or events!"
+        f"Hi {user.first_name}! I'm your University Info Bot. Ask me any question about college schedules, fees, "
+        f"or events!"
     )
 
 
@@ -39,7 +40,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• 🔍 `/find [feature]` — Find places with specific features (e.g., printer, food, study).\n\n"
         "• 🧺 *Locker hours* — Ask for locker access times in any college.\n\n"
         "• ❓ *University FAQs* — Ask about documents, laundry, residence permits, etc.\n\n"
-        "• 🗓 *College events* — Get updates on announcements and upcoming activities.\n\n"
         "💬 Just type your question — I'll understand natural language too!\n\n"
         "🔒 Bot is limited to university-related queries only.",
         parse_mode=ParseMode.MARKDOWN

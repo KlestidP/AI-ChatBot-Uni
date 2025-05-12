@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, List, Optional
 from langchain_mistralai import ChatMistralAI
 from telegram import Update
 from telegram.ext import ContextTypes

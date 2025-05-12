@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Optional
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from telegram import BotCommand
 from dotenv import load_dotenv

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Tuple
-from telegram import Update, Message, User, Chat
+from typing import List, Dict, Optional
+from telegram import Update
 from telegram.ext import ContextTypes
 import logging
 

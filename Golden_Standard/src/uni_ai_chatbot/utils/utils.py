@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Dict, Any, TypedDict
+from typing import Optional, TypedDict
 from telegram import Update, Message, User
 
 logger = logging.getLogger(__name__)

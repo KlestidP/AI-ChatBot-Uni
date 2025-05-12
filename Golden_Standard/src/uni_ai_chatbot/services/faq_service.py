@@ -1,6 +1,5 @@
 import logging
-import json
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from telegram import Update
 from telegram.ext import ContextTypes
 

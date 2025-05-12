@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import Tuple, Dict, Any, Optional, List
+from typing import Tuple, Any, Optional
 from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_mistralai import MistralAIEmbeddings

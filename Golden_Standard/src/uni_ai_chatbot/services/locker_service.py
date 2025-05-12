@@ -1,9 +1,7 @@
 import re
 import logging
-import json
-from typing import Dict, Any, Optional, List, Tuple, Match
-from telegram import Update, Message
-from telegram.ext import ContextTypes, ConversationHandler
+from telegram import Update
+from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
 
