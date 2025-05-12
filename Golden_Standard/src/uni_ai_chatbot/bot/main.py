@@ -1,24 +1,25 @@
 import os
 import logging
+from typing import Dict, Any, List, Optional, Tuple
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from telegram import BotCommand
 from dotenv import load_dotenv
 from uni_ai_chatbot.bot.commands import start, help_command, where_command, find_command
-from uni_ai_chatbot.bot.conversation import handle_message  # Updated import
+from uni_ai_chatbot.bot.conversation import handle_message
 from uni_ai_chatbot.bot.callbacks import handle_location_callback
 from uni_ai_chatbot.services.qa_service_supabase import initialize_qa_chain, get_scoped_qa_chain
 from uni_ai_chatbot.data.campus_map_data import load_campus_map
 from uni_ai_chatbot.data.locker_hours_loader import load_locker_hours
 from uni_ai_chatbot.services.locker_service import parse_locker_hours
-from uni_ai_chatbot.tools.tools_architecture import tool_registry  # Import tool registry
+from uni_ai_chatbot.tools.tools_architecture import tool_registry
 
 load_dotenv()
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
+TELEGRAM_TOKEN: Optional[str] = os.environ.get("TELEGRAM_TOKEN")
+MISTRAL_API_KEY: Optional[str] = os.environ.get("MISTRAL_API_KEY")
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN is not set in environment variables")
 if not MISTRAL_API_KEY:
@@ -26,7 +27,13 @@ if not MISTRAL_API_KEY:
 
 
 # set the bot menu button to show available commands
-async def set_bot_commands(application):
+async def set_bot_commands(application: Application) -> None:
+    """
+    Set the bot's command menu
+
+    Args:
+        application: Telegram Application instance
+    """
     await application.bot.set_my_commands([
         BotCommand("start", "Start the bot"),
         BotCommand("help", "Get help using the bot"),
@@ -36,7 +43,8 @@ async def set_bot_commands(application):
 
 
 def main() -> None:
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    """Main function to initialize and run the bot"""
+    application: Application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Initialize QA chain components with Supabase vector store
     vector_store, llm, general_qa_chain, location_qa_chain, locker_qa_chain, faq_qa_chain = initialize_qa_chain()

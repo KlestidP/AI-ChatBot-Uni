@@ -1,14 +1,21 @@
 import logging
+import json
+from typing import Dict, List, Any, Optional
 from telegram import Update
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
 
 
-async def handle_faq_query(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
+async def handle_faq_query(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> None:
     """
     Handle FAQ queries using AI-driven matching instead of hard-coded rules.
     Uses semantic search and LLM to understand and match FAQs.
+
+    Args:
+        update: Telegram Update object
+        context: Telegram context
+        query: The user's message text
     """
     try:
         # Get the FAQ QA chain
@@ -23,11 +30,11 @@ async def handle_faq_query(update: Update, context: ContextTypes.DEFAULT_TYPE, q
         if llm:
             # Get all FAQ questions for better matching
             from uni_ai_chatbot.data.resources import load_faq_answers
-            faq_answers = load_faq_answers()
+            faq_answers: Dict[str, str] = load_faq_answers()
 
             # Create a classification prompt
-            faq_questions = list(faq_answers.keys())
-            classification_prompt = f"""You are a university FAQ bot. Below are the FAQ questions you can answer:
+            faq_questions: List[str] = list(faq_answers.keys())
+            classification_prompt: str = f"""You are a university FAQ bot. Below are the FAQ questions you can answer:
 
 {', '.join(faq_questions)}
 
@@ -39,7 +46,7 @@ Which of the above FAQ questions is this query most related to? If it's clearly 
             try:
                 # Ask the LLM to classify the query
                 response = llm.invoke(classification_prompt)
-                matched_faq = response.content.strip()
+                matched_faq: str = response.content.strip()
 
                 # If the LLM found a match and it exists in our FAQs
                 if matched_faq.lower() != "none" and matched_faq in faq_answers:
@@ -49,7 +56,7 @@ Which of the above FAQ questions is this query most related to? If it's clearly 
                 logger.warning(f"LLM classification failed: {e}, falling back to retrieval")
 
         # If no direct match or classification failed, use retrieval-based QA
-        response = faq_qa_chain.invoke(query)
+        response: Dict[str, Any] = faq_qa_chain.invoke(query)
 
         await update.message.reply_text(response['result'], parse_mode="Markdown")
 
