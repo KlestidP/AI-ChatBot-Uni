@@ -22,7 +22,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• 📍 `/where [location]` — Find places on campus (e.g., Ocean Lab, C3, IRC).\n\n"
         "• 🔍 `/find [feature]` — Find places with specific features (e.g., printer, food, study).\n\n"
         "• 🧺 *Locker hours* — Ask for locker access times in any college.\n\n"
-        "• 🍽 *Servery hours* — Ask for meal times in your college or the coffee bar.\n\n"
         "• ❓ *University FAQs* — Ask about documents, laundry, residence permits, etc.\n\n"
         "• 🗓 *College events* — Get updates on announcements and upcoming activities.\n\n"
         "💬 Just type your question — I'll understand natural language too!\n\n"
