@@ -1,6 +1,6 @@
 import os
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set, Tuple
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -8,12 +8,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Get Supabase credentials
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY: Optional[str] = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
 
 def get_supabase_client() -> Client:
-    """Initialize and return a Supabase client"""
+    """
+    Initialize and return a Supabase client
+
+    Returns:
+        A configured Supabase client
+
+    Raises:
+        ValueError: If credentials are not found
+    """
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ValueError("Supabase credentials not found in environment variables")
 
@@ -26,8 +34,11 @@ def load_campus_map() -> List[Dict[str, Any]]:
 
     Returns:
         List of dictionaries containing location information
+
+    Raises:
+        Exception: If there's an error fetching data
     """
-    supabase = get_supabase_client()
+    supabase: Client = get_supabase_client()
 
     # Query the campus_map table
     response = supabase.table("campus_map").select("*").execute()
@@ -39,8 +50,17 @@ def load_campus_map() -> List[Dict[str, Any]]:
 
 
 def find_locations_by_tag(locations: List[Dict[str, Any]], tag: str) -> List[Dict[str, Any]]:
-    """Find all locations that have a specific tag"""
-    results = []
+    """
+    Find all locations that have a specific tag
+
+    Args:
+        locations: List of location dictionaries
+        tag: The tag to search for
+
+    Returns:
+        List of locations that contain the specified tag
+    """
+    results: List[Dict[str, Any]] = []
     for loc in locations:
         # Check if tags field exists and contains the tag
         if loc.get('tags') and tag in [t.strip() for t in loc['tags'].split(',')]:
@@ -48,17 +68,22 @@ def find_locations_by_tag(locations: List[Dict[str, Any]], tag: str) -> List[Dic
     return results
 
 
-# In campus_map_data.py
 def find_location_by_name_or_alias(locations: List[Dict[str, Any]], query: str) -> Optional[Dict[str, Any]]:
     """
     Find a location by its name or alias (case-insensitive)
-
     Improved with more robust matching and better handling of partial matches
+
+    Args:
+        locations: List of location dictionaries
+        query: The search term to look for
+
+    Returns:
+        The matching location dictionary, or None if no match found
     """
     if not query or not locations:
         return None
 
-    query = query.lower().strip()
+    query: str = query.lower().strip()
 
     # Strategy 1: Exact match on name
     for location in locations:
@@ -68,14 +93,14 @@ def find_location_by_name_or_alias(locations: List[Dict[str, Any]], query: str) 
     # Strategy 2: Exact match on alias
     for location in locations:
         if location.get('aliases'):
-            aliases = [alias.strip().lower() for alias in location['aliases'].split(',')]
+            aliases: List[str] = [alias.strip().lower() for alias in location['aliases'].split(',')]
             if query in aliases:
                 return location
 
     # Strategy 3: Partial match on name (whole word)
     for location in locations:
-        loc_name_words = location['name'].lower().split()
-        query_words = query.split()
+        loc_name_words: List[str] = location['name'].lower().split()
+        query_words: List[str] = query.split()
         if any(word in loc_name_words for word in query_words):
             return location
 
@@ -87,7 +112,7 @@ def find_location_by_name_or_alias(locations: List[Dict[str, Any]], query: str) 
     # Strategy 5: Alias partial match
     for location in locations:
         if location.get('aliases'):
-            aliases = [alias.strip().lower() for alias in location['aliases'].split(',')]
+            aliases: List[str] = [alias.strip().lower() for alias in location['aliases'].split(',')]
             for alias in aliases:
                 if query in alias or alias in query:
                     return location
@@ -95,12 +120,13 @@ def find_location_by_name_or_alias(locations: List[Dict[str, Any]], query: str) 
     # Strategy 6: Word-by-word matching for aliases
     for location in locations:
         if location.get('aliases'):
-            aliases = location['aliases'].lower()
-            query_words = query.split()
+            aliases: str = location['aliases'].lower()
+            query_words: List[str] = query.split()
             if any(word in aliases for word in query_words if len(word) > 2):
                 return location
 
     return None
+
 
 def find_locations_by_feature(locations: List[Dict[str, Any]], feature_keywords: List[str]) -> List[Dict[str, Any]]:
     """
@@ -113,11 +139,11 @@ def find_locations_by_feature(locations: List[Dict[str, Any]], feature_keywords:
     Returns:
         List of locations that match any of the keywords
     """
-    feature_keywords = [kw.lower() for kw in feature_keywords]
-    matches = []
+    feature_keywords: List[str] = [kw.lower() for kw in feature_keywords]
+    matches: List[Dict[str, Any]] = []
 
     # Feature matching logic - map common request terms to tags
-    feature_to_tag_map = {
+    feature_to_tag_map: Dict[str, str] = {
         "print": "printer",
         "printing": "printer",
         "eat": "food",
@@ -133,7 +159,7 @@ def find_locations_by_feature(locations: List[Dict[str, Any]], feature_keywords:
     }
 
     # Convert feature keywords to relevant tags
-    search_tags = set()
+    search_tags: Set[str] = set()
     for keyword in feature_keywords:
         if keyword in feature_to_tag_map:
             search_tags.add(feature_to_tag_map[keyword])
@@ -145,7 +171,7 @@ def find_locations_by_feature(locations: List[Dict[str, Any]], feature_keywords:
         if not location.get('tags'):
             continue
 
-        location_tags = set([tag.strip().lower() for tag in location['tags'].split(',')])
+        location_tags: Set[str] = set([tag.strip().lower() for tag in location['tags'].split(',')])
         if any(tag in location_tags for tag in search_tags):
             matches.append(location)
 
@@ -163,7 +189,7 @@ def extract_feature_keywords(text: str) -> List[str]:
         List of potential feature keywords
     """
     # Common feature-related words to look for
-    feature_patterns = [
+    feature_patterns: List[str] = [
         r'\b(print(?:ing|er)?)\b',
         r'\b(stud(?:y|ying))\b',
         r'\b(food|eat(?:ing)?|dining|meal)\b',
@@ -172,16 +198,24 @@ def extract_feature_keywords(text: str) -> List[str]:
         r'\b(quiet)\b'
     ]
 
-    keywords = []
+    keywords: List[str] = []
     for pattern in feature_patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
+        matches: List[str] = re.findall(pattern, text, re.IGNORECASE)
         keywords.extend([m.lower() for m in matches if m])
 
     return keywords
 
 
 def extract_location_name(query: str) -> str:
-    """Extract potential location name from a query"""
+    """
+    Extract potential location name from a query
+
+    Args:
+        query: The user's input text
+
+    Returns:
+        The cleaned location name
+    """
     # Remove common question words
     query = query.lower()
     for prefix in ["where is", "where's", "where can i find", "how do i get to", "find", "where"]:
