@@ -1,6 +1,6 @@
 import os
 import re
-from typing import List, Dict, Any, Optional, Set, Tuple
+from typing import List, Dict, Any, Optional, Set
 from supabase import create_client, Client
 from dotenv import load_dotenv
 

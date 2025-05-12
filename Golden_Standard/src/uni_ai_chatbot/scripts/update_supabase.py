@@ -19,7 +19,7 @@ def main():
 
     # Import here to avoid errors if the script is run outside of project context
     from setup_pgvector import setup_pgvector
-    from preprocess_documents_supabase import process_and_save_to_supabase
+    from preprocess_supabase import process_and_save_to_supabase
 
     logger.info("Setting up pgvector extension if needed...")
     try:
