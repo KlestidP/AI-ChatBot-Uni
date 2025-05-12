@@ -24,34 +24,51 @@ class ToolClassifier:
         """
         Classify a user query to determine which tool should handle it
 
-        Args:
-            query: The user's message text
-
-        Returns:
-            The name of the tool that should handle this query
+        First tries rule-based classification for clear cases,
+        then falls back to LLM for ambiguous queries
         """
-        if not self.llm:
-            # Fallback to rule-based classification if no LLM available
-            return self._rule_based_classify(query)
+        query_lower = query.lower()
 
-        # Generate a prompt for the LLM to classify the query
-        classification_prompt = self._build_classification_prompt(query)
+        # Rule 1: Locker-related queries
+        if "locker" in query_lower and any(word in query_lower for word in
+                                           ["hours", "time", "access", "open", "basement"]):
+            return "locker"
 
-        try:
-            # Call the LLM to classify the query
-            response = self.llm.invoke(classification_prompt)
-            response_text = response.content
+        # Rule 2: FAQ-related queries - check for common FAQ topics
+        faq_indicators = [
+            "immatrikulation", "enrollment", "certificate",
+            "laundry", "washing", "dryer",
+            "residence permit", "visa", "ausländerbehörde",
+            "address change", "moving", "anmeldung",
+            "emergency", "emergency contact",
+            "driving license", "driver's license", "führerschein",
+            "semester ticket", "transportation",
+            "postal code", "zip", "mail"
+        ]
 
-            # Parse the response to extract the tool name
-            tool_name = self._parse_classification_response(response_text)
+        if any(indicator in query_lower for indicator in faq_indicators):
+            return "faq"
 
-            logger.info(f"LLM classified query '{query}' as '{tool_name}'")
-            return tool_name
+        # Rule 3: Location-related queries
+        location_indicators = ["where", "find", "location", "how to get", "building", "room"]
+        feature_keywords = extract_feature_keywords(query_lower)
 
-        except Exception as e:
-            logger.error(f"Error classifying query with LLM: {e}")
-            # Fall back to rule-based classification
-            return self._rule_based_classify(query)
+        if any(indicator in query_lower for indicator in location_indicators) or feature_keywords:
+            return "location"
+
+        # For ambiguous cases, use the LLM if available
+        if self.llm:
+            try:
+                classification_prompt = self._build_classification_prompt(query)
+                response = self.llm.invoke(classification_prompt)
+                tool_name = self._parse_classification_response(response.content)
+                logger.info(f"LLM classified query '{query}' as '{tool_name}'")
+                return tool_name
+            except Exception as e:
+                logger.warning(f"LLM classification failed: {e}, falling back to default")
+
+        # Default to general QA for anything else
+        return "qa"
 
     def _build_classification_prompt(self, query: str) -> str:
         """
@@ -86,37 +103,6 @@ Analyze the query and determine which tool is most appropriate to handle it. Res
                 return tool_name
 
         # If no match found, default to qa
-        return "qa"
-
-    def _rule_based_classify(self, query: str) -> str:
-        """
-        Fallback rule-based classification method similar to the current approach
-        """
-        query = query.lower()
-
-        # Check if asking for locker hours
-        if "locker" in query and any(word in query for word in ["open", "hours", "time", "access"]):
-            return "locker"
-
-        # Extract feature keywords
-        feature_keywords = extract_feature_keywords(query)
-
-        # Location-related keywords and phrases
-        location_features = ["print", "printer", "food", "eat", "study", "studying",
-                             "coffee", "quiet", "library", "ify"]
-        location_indicators = ["where", "find", "location", "how to get to", "building", "room", "campus",
-                               "where can i get", "where can i find", "where is", "how do i get to"]
-
-        # Check if query mentions any location features
-        has_feature_keywords = bool(feature_keywords) or any(feature in query for feature in location_features)
-
-        # Check if it's a location query
-        is_location_query = has_feature_keywords or any(indicator in query for indicator in location_indicators)
-
-        if is_location_query:
-            return "location"
-
-        # Default to general QA
         return "qa"
 
 

@@ -48,28 +48,43 @@ def find_locations_by_tag(locations: List[Dict[str, Any]], tag: str) -> List[Dic
     return results
 
 
+# In campus_map_data.py
 def find_location_by_name_or_alias(locations: List[Dict[str, Any]], query: str) -> Optional[Dict[str, Any]]:
-    """Find a location by its name or alias (case-insensitive)"""
+    """
+    Find a location by its name or alias (case-insensitive)
+
+    Improved with more robust matching and better handling of partial matches
+    """
+    if not query or not locations:
+        return None
+
     query = query.lower().strip()
 
-    # First try exact match on name
+    # Strategy 1: Exact match on name
     for location in locations:
         if location['name'].lower() == query:
             return location
 
-    # Then try exact match on alias
+    # Strategy 2: Exact match on alias
     for location in locations:
         if location.get('aliases'):
             aliases = [alias.strip().lower() for alias in location['aliases'].split(',')]
             if query in aliases:
                 return location
 
-    # If no exact match, try partial match on name
+    # Strategy 3: Partial match on name (whole word)
+    for location in locations:
+        loc_name_words = location['name'].lower().split()
+        query_words = query.split()
+        if any(word in loc_name_words for word in query_words):
+            return location
+
+    # Strategy 4: Partial match anywhere
     for location in locations:
         if query in location['name'].lower():
             return location
 
-    # Finally try partial match on alias
+    # Strategy 5: Alias partial match
     for location in locations:
         if location.get('aliases'):
             aliases = [alias.strip().lower() for alias in location['aliases'].split(',')]
@@ -77,8 +92,15 @@ def find_location_by_name_or_alias(locations: List[Dict[str, Any]], query: str) 
                 if query in alias or alias in query:
                     return location
 
-    return None
+    # Strategy 6: Word-by-word matching for aliases
+    for location in locations:
+        if location.get('aliases'):
+            aliases = location['aliases'].lower()
+            query_words = query.split()
+            if any(word in aliases for word in query_words if len(word) > 2):
+                return location
 
+    return None
 
 def find_locations_by_feature(locations: List[Dict[str, Any]], feature_keywords: List[str]) -> List[Dict[str, Any]]:
     """
@@ -156,3 +178,17 @@ def extract_feature_keywords(text: str) -> List[str]:
         keywords.extend([m.lower() for m in matches if m])
 
     return keywords
+
+
+def extract_location_name(query: str) -> str:
+    """Extract potential location name from a query"""
+    # Remove common question words
+    query = query.lower()
+    for prefix in ["where is", "where's", "where can i find", "how do i get to", "find", "where"]:
+        if query.startswith(prefix):
+            query = query[len(prefix):].strip()
+
+    # Remove question mark
+    query = query.strip("?").strip()
+
+    return query

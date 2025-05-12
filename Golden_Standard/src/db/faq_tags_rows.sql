@@ -1,0 +1,1 @@
+INSERT INTO "public"."faq_tags" ("id", "label") VALUES ('1', 'Documents'), ('2', 'Residency'), ('3', 'Facilities'), ('4', 'Transportation'), ('5', 'Emergencies');

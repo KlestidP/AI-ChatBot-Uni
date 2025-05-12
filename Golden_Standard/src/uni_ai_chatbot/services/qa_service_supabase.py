@@ -45,15 +45,20 @@ def initialize_qa_chain():
             api_key=MISTRAL_API_KEY
         )
 
+        # Create specialized QA chains for different tool types
+        location_qa_chain = get_scoped_qa_chain(vector_store, llm, "location")
+        locker_qa_chain = get_scoped_qa_chain(vector_store, llm, "locker")
+        faq_qa_chain = get_scoped_qa_chain(vector_store, llm, "qa")  # Use "qa" type for FAQs
+
         # Create the base QA chain with the ability to access all data
-        qa_chain = RetrievalQA.from_chain_type(
+        general_qa_chain = RetrievalQA.from_chain_type(
             llm=llm,
             retriever=vector_store.as_retriever(search_kwargs={"k": 4}),
             return_source_documents=True
         )
 
-        logger.info("Successfully initialized QA chain with Supabase vector store")
-        return vector_store, llm, qa_chain
+        logger.info("Successfully initialized QA chains")
+        return vector_store, llm, general_qa_chain, location_qa_chain, locker_qa_chain, faq_qa_chain
 
     except Exception as e:
         logger.error(f"Error initializing QA chain: {e}")

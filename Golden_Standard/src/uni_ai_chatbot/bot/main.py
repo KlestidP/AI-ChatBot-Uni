@@ -39,12 +39,7 @@ def main() -> None:
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Initialize QA chain components with Supabase vector store
-    vector_store, llm, general_qa_chain = initialize_qa_chain()
-
-    # Create specialized QA chains for different tool types
-    location_qa_chain = get_scoped_qa_chain(vector_store, llm, "location")
-    locker_qa_chain = get_scoped_qa_chain(vector_store, llm, "locker")
-    qa_chain = get_scoped_qa_chain(vector_store, llm, "qa")
+    vector_store, llm, general_qa_chain, location_qa_chain, locker_qa_chain, faq_qa_chain = initialize_qa_chain()
 
     # Store LLM instance for tool classifier
     application.bot_data["llm"] = llm
@@ -53,7 +48,8 @@ def main() -> None:
     application.bot_data["general_qa_chain"] = general_qa_chain
     application.bot_data["location_qa_chain"] = location_qa_chain
     application.bot_data["locker_qa_chain"] = locker_qa_chain
-    application.bot_data["qa_chain"] = qa_chain  # Backward compatibility
+    application.bot_data["faq_qa_chain"] = faq_qa_chain
+    application.bot_data["qa_chain"] = general_qa_chain  # Backward compatibility
 
     # Load data from Supabase
     application.bot_data["campus_map"] = load_campus_map()
