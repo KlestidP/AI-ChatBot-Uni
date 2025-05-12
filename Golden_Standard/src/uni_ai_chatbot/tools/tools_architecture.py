@@ -4,6 +4,8 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import logging
 
+from uni_ai_chatbot.utils.utils import handle_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,33 +73,83 @@ class QATool(Tool):
                        "Use for inquiries about university services, documents, procedures, events, deadlines, "
                        "or any other university-related questions not specific to lockers or navigation."
         )
-    
+
+    # In tools_architecture.py, modify QATool class
     async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> None:
-        """Process a general question about the university"""
+        """Process a general question about the university with improved context"""
         qa_chain = context.bot_data["qa_chain"]
         try:
+            # Send typing indicator to improve UX
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+            # Invoke the QA chain
             response = qa_chain.invoke(query)
             result = response['result']
 
-            # Check if we have source documents
+            # Enhance response with source information when available
             if 'source_documents' in response and response['source_documents']:
-                # Add a "Sources:" section
-                sources = set()
+                # Group sources by type for better organization
+                source_groups = {
+                    'faq': [],
+                    'location': [],
+                    'locker': []
+                }
+
                 for doc in response['source_documents']:
                     if 'type' in doc.metadata:
-                        if doc.metadata['type'] == 'faq' and 'question' in doc.metadata:
-                            sources.add(f"FAQ: {doc.metadata['question']}")
-                        elif doc.metadata['type'] == 'location' and 'name' in doc.metadata:
-                            sources.add(f"Location: {doc.metadata['name']}")
+                        doc_type = doc.metadata['type']
+                        if doc_type == 'faq' and 'question' in doc.metadata:
+                            source_groups['faq'].append(doc.metadata['question'])
+                        elif doc_type == 'location' and 'name' in doc.metadata:
+                            source_groups['location'].append(doc.metadata['name'])
+                        elif doc_type == 'locker' and 'college' in doc.metadata:
+                            source_groups['locker'].append(
+                                f"{doc.metadata['college']} ({doc.metadata['day']})")
 
-                if sources:
-                    result += "\n\n*Sources:*\n- " + "\n- ".join(sources)
+                # Add sourced information if available
+                sources_text = []
+                if source_groups['faq']:
+                    unique_faqs = list(set(source_groups['faq']))[:3]  # Limit to 3 unique sources
+                    sources_text.append("*Relevant FAQs:* " + ", ".join(unique_faqs))
+
+                if source_groups['location']:
+                    unique_locations = list(set(source_groups['location']))[:3]
+                    sources_text.append("*Relevant Locations:* " + ", ".join(unique_locations))
+
+                if source_groups['locker']:
+                    unique_lockers = list(set(source_groups['locker']))[:3]
+                    sources_text.append("*Relevant Locker Info:* " + ", ".join(unique_lockers))
+
+                if sources_text:
+                    result += "\n\n" + "\n".join(sources_text)
 
             await update.message.reply_text(result, parse_mode="Markdown")
-        except Exception as e:
-            logger.error(f"Error processing: {e}")
-            await update.message.reply_text("Sorry, I couldn't process your question.")
 
+        except Exception as e:
+            logger.error(f"Error in QA processing: {e}")
+            await handle_error(
+                update,
+                error=e,
+                message="I'm having trouble answering that question. Could you rephrase it?"
+            )
+
+
+class FAQTool(Tool):
+    """Tool for handling FAQ-related queries"""
+
+    def __init__(self):
+        super().__init__(
+            name="faq",
+            description="Answers frequently asked questions about university services, documents, "
+                        "procedures, and common student needs. Use for questions about enrollment certificates, "
+                        "residence permits, laundry, address changes, emergency contacts, driving licenses, "
+                        "semester tickets, postal codes, and other common student inquiries."
+        )
+
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> None:
+        """Process a FAQ-related query"""
+        from uni_ai_chatbot.services.faq_service import handle_faq_query
+        await handle_faq_query(update, context, query)
 
 class ToolRegistry:
     """Registry for all available tools in the chatbot"""
@@ -132,3 +184,4 @@ tool_registry = ToolRegistry()
 tool_registry.register_tool(LockerTool())
 tool_registry.register_tool(LocationTool())
 tool_registry.register_tool(QATool())
+tool_registry.register_tool(FAQTool())

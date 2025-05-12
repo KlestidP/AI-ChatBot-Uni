@@ -1,7 +1,8 @@
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
-from uni_ai_chatbot.bot.location_handlers import find_location_by_name_or_alias, show_location_details, \
+from uni_ai_chatbot.data.campus_map_data import find_location_by_name_or_alias
+from uni_ai_chatbot.bot.location_handlers import show_location_details, \
     handle_location_with_ai
 from uni_ai_chatbot.data.campus_map_data import extract_feature_keywords, find_locations_by_feature
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -39,8 +40,12 @@ async def where_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Extract location name from query
+    from uni_ai_chatbot.data.campus_map_data import extract_location_name
+    cleaned_query = extract_location_name(query)
+
     campus_map = context.bot_data["campus_map"]
-    location = find_location_by_name_or_alias(campus_map, query)
+    location = find_location_by_name_or_alias(campus_map, cleaned_query)
 
     if location:
         await show_location_details(update, location)
@@ -48,7 +53,6 @@ async def where_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Sorry, I couldn't find that location. Try asking in a different way or try the /find command."
         )
-
 
 async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Find locations with specific features"""
@@ -76,7 +80,7 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             # Multiple locations found, show a keyboard to select
             keyboard = []
-            for loc in locations[:8]:  # Limit to 8 options
+            for loc in locations[:13]:  # Limit to 8 options
                 keyboard.append([InlineKeyboardButton(
                     text=loc['name'],
                     callback_data=f"location:{loc['id']}"

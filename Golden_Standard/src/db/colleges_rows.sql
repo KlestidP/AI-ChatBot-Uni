@@ -1,0 +1,1 @@
+INSERT INTO "public"."colleges" ("id", "name") VALUES ('1', 'Krupp College'), ('2', 'College III'), ('3', 'Nordmetall College'), ('4', 'Mercator College');

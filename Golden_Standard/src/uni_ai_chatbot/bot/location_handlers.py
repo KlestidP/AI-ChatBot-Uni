@@ -12,37 +12,6 @@ from uni_ai_chatbot.data.campus_map_data import extract_feature_keywords
 logger = logging.getLogger(__name__)
 
 
-def find_location_by_name_or_alias(locations: List[Dict[str, Any]], query: str) -> Optional[Dict[str, Any]]:
-    """Find a location by its name or alias (case-insensitive)"""
-    query = query.lower().strip()
-
-    # First try exact match on name
-    for location in locations:
-        if location['name'].lower() == query:
-            return location
-
-    # Then try exact match on alias
-    for location in locations:
-        if location.get('aliases'):
-            aliases = [alias.strip().lower() for alias in location['aliases'].split(',')]
-            if query in aliases:
-                return location
-
-    # If no exact match, try partial match on name
-    for location in locations:
-        if query in location['name'].lower():
-            return location
-
-    # Finally try partial match on alias
-    for location in locations:
-        if location.get('aliases'):
-            aliases = [alias.strip().lower() for alias in location['aliases'].split(',')]
-            for alias in aliases:
-                if query in alias or alias in query:
-                    return location
-
-    return None
-
 
 async def show_location_details(update: Update, location, is_callback=False):
     """Show details and venue for a location"""
@@ -89,26 +58,25 @@ async def show_location_details(update: Update, location, is_callback=False):
 async def handle_location_with_ai(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
     """
     Use AI to understand and respond to location-related queries
-    First attempts to find locations using feature keywords, then falls back to AI
+    First attempts to extract features from the query, then falls back to direct matching and AI
     """
-    # First try to extract feature keywords and find matching locations directly
+    # Extract feature keywords from the query
     feature_keywords = extract_feature_keywords(query)
     campus_map = context.bot_data["campus_map"]
 
-    # If no keywords were extracted, check for location-related terms
-    if not feature_keywords:
-        # Check for common location-related terms
-        location_terms = ["where", "find", "get", "location", "building"]
-        for term in location_terms:
-            if term in query.lower():
-                # Extract possible feature words - use all words that might be relevant
-                feature_words = [word.lower() for word in query.split()
-                                 if len(word) > 3 and word.lower() not in
-                                 ["where", "find", "get", "can", "the", "and", "for", "how", "what"]]
-                feature_keywords = feature_words
-                break
+    # Check for printing-related queries explicitly since they're common
+    if any(word in query.lower() for word in ["print", "printing", "printer"]):
+        feature_keywords.append("printer")
 
-    # Try to find locations with these features
+    # Add common feature words that might be in the query
+    for word in ["food", "eat", "study", "coffee", "quiet"]:
+        if word in query.lower():
+            feature_keywords.append(word)
+
+    # Remove duplicates
+    feature_keywords = list(set(feature_keywords))
+
+    # If we have feature keywords, use those for searching
     if feature_keywords:
         locations = find_locations_by_feature(campus_map, feature_keywords)
 
@@ -135,7 +103,48 @@ async def handle_location_with_ai(update: Update, context: ContextTypes.DEFAULT_
                 )
                 return
 
-    # If we reach here, no direct matches were found, fall back to AI
+    # If no feature keywords or no locations found, try direct location matching
+    from uni_ai_chatbot.data.campus_map_data import extract_location_name, find_location_by_name_or_alias
+    location_term = extract_location_name(query)
+
+    location = find_location_by_name_or_alias(campus_map, location_term)
+
+    if location:
+        await show_location_details(update, location)
+        return
+
+    # If we still haven't found anything, extract words that might be features
+    if not feature_keywords:
+        # Extract possible feature words - use all words that might be relevant
+        feature_words = [word.lower() for word in query.split()
+                         if len(word) > 3 and word.lower() not in
+                         ["where", "find", "get", "can", "the", "and", "for", "how", "what"]]
+
+        if feature_words:
+            locations = find_locations_by_feature(campus_map, feature_words)
+
+            if locations:
+                if len(locations) == 1:
+                    location = locations[0]
+                    await show_location_details(update, location)
+                    return
+                else:
+                    keyboard = []
+                    for loc in locations[:8]:
+                        keyboard.append([InlineKeyboardButton(
+                            text=loc['name'],
+                            callback_data=f"location:{loc['id']}"
+                        )])
+
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    feature_text = " and ".join(feature_words)
+                    await update.message.reply_text(
+                        f"I found {len(locations)} places with {feature_text}. Which one would you like to see?",
+                        reply_markup=reply_markup
+                    )
+                    return
+
+    # If we reach here, fall back to AI
     location_qa_chain = context.bot_data["location_qa_chain"]
 
     try:
@@ -164,14 +173,14 @@ async def handle_location_with_ai(update: Update, context: ContextTypes.DEFAULT_
         # Match potential locations against our database
         matched_locations = []
         for pot_loc in potential_locations:
-            location = find_location_by_name_or_alias(campus_map, pot_loc)
-            if location and location not in matched_locations:
-                matched_locations.append(location)
+            loc = find_location_by_name_or_alias(campus_map, pot_loc)
+            if loc and loc not in matched_locations:
+                matched_locations.append(loc)
 
         if matched_locations:
             # Locations found, show options
             keyboard = []
-            for loc in matched_locations[:8]:  # Limit to 8 options
+            for loc in matched_locations[:13]:  # Limit to 8 options
                 keyboard.append([InlineKeyboardButton(
                     text=loc['name'],
                     callback_data=f"location:{loc['id']}"
