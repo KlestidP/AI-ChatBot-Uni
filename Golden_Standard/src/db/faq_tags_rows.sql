@@ -1,1 +1,1 @@
-INSERT INTO "public"."faq_tags" ("id", "label") VALUES ('1', 'Documents'), ('2', 'Residency'), ('3', 'Facilities'), ('4', 'Transportation'), ('5', 'Emergencies');
+INSERT INTO "public"."faq_tags" ("label", "id") VALUES ('Facilities', '0c4d945f-cf43-4601-af4a-079186356e31'), ('Transportation', 'be286870-e4f1-497a-8f03-5c36d61afff3'), ('Emergencies', 'c7d3a7fe-65a9-4d35-9c8c-16f339a0a33a'), ('Documents', 'ca477cf7-32e1-4975-b7a5-250f22ff2571'), ('Residency', 'd288767c-1156-48bb-a34e-b40f83fe9678');
