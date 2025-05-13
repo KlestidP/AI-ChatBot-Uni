@@ -1,12 +1,11 @@
-import os
 import logging
-from dotenv import load_dotenv
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_mistralai import MistralAIEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
-from supabase import create_client
 
+from uni_ai_chatbot.configurations.config import MISTRAL_API_KEY
+from uni_ai_chatbot.utils.database import get_supabase_client
 from uni_ai_chatbot.data.resources import load_faq_answers
 from uni_ai_chatbot.data.campus_map_data import load_campus_map
 from uni_ai_chatbot.data.locker_hours_loader import load_locker_hours
@@ -17,16 +16,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load environment variables
-load_dotenv()
-MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
 if not MISTRAL_API_KEY:
     raise ValueError("MISTRAL_API_KEY is not set in environment variables")
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Supabase credentials not found in environment variables")
 
 
 def create_documents():
@@ -117,29 +108,45 @@ def process_and_save_to_supabase():
     embeddings = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
 
     logger.info("Creating Supabase client...")
-    supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    supabase_client = get_supabase_client()
 
     logger.info("Storing embeddings in Supabase...")
-    # First, clear the existing documents
-    supabase_client.table("documents").delete().execute()
+
+    # Fix: Use a safer approach to clear existing documents
+    try:
+        # First, check if the table has any documents
+        response = supabase_client.table("documents").select("id").limit(1).execute()
+
+        if response and hasattr(response, 'data') and len(response.data) > 0:
+            logger.info("Clearing existing documents...")
+            # Use a safer approach to delete all documents - delete them in batches
+            # with a true condition rather than no condition
+            supabase_client.table("documents").delete().neq("id", 0).execute()
+    except Exception as e:
+        logger.warning(f"Error clearing existing documents: {e}")
+        logger.info("Proceeding to add new documents anyway...")
 
     # Create a new vector store
-    vector_store = SupabaseVectorStore.from_documents(
-        documents=split_docs,
-        embedding=embeddings,
-        client=supabase_client,
-        table_name="documents",
-        query_name="match_documents"
-    )
-
-    logger.info("Embeddings stored successfully in Supabase")
-    return vector_store
+    try:
+        logger.info(f"Adding {len(split_docs)} documents to vector store...")
+        vector_store = SupabaseVectorStore.from_documents(
+            documents=split_docs,
+            embedding=embeddings,
+            client=supabase_client,
+            table_name="documents",
+            query_name="match_documents"
+        )
+        logger.info("Embeddings stored successfully in Supabase")
+        return vector_store
+    except Exception as e:
+        logger.error(f"Error storing documents in vector store: {e}")
+        raise
 
 
 if __name__ == "__main__":
     try:
         # First check if setup was done
-        from setup_pgvector import setup_pgvector
+        from uni_ai_chatbot.scripts.setup_pgvector import setup_pgvector
 
         setup_pgvector()
 

@@ -1,8 +1,11 @@
 import logging
 from typing import Dict, List, Optional
+from functools import lru_cache
 from langchain_mistralai import ChatMistralAI
 from telegram import Update
 from telegram.ext import ContextTypes
+
+from uni_ai_chatbot.configurations.config import ENABLE_LLM_CLASSIFICATION
 
 logger = logging.getLogger(__name__)
 
@@ -38,28 +41,61 @@ class ToolClassifier:
         if 'locker_conversations' in context.bot_data and user_id in context.bot_data['locker_conversations']:
             return "locker"  # Continue the locker conversation
 
-        # Use the LLM if available
-        if self.llm:
+        # Use the LLM if available and enabled
+        if self.llm and ENABLE_LLM_CLASSIFICATION:
             try:
-                classification_prompt: str = self._build_classification_prompt(query)
-                response = self.llm.invoke(classification_prompt)
-                tool_name: str = self._parse_classification_response(response.content)
+                # Use cached classification to avoid repeated LLM calls
+                clean_query = query.strip().lower()
+                tool_name = await self._cached_classify(clean_query)
                 logger.info(f"LLM classified query '{query}' as '{tool_name}'")
                 return tool_name
             except Exception as e:
                 logger.warning(f"LLM classification failed: {e}, falling back to basic rules")
 
         # Fall back to basic rules
-        query_lower: str = query.lower()
+        return self._rule_based_classification(query)
+
+    @lru_cache(maxsize=100)
+    async def _cached_classify(self, query: str) -> str:
+        """
+        Cached classification to avoid repeated LLM calls for identical queries
+
+        Args:
+            query: The normalized user query
+
+        Returns:
+            The classified tool name
+        """
+        classification_prompt = self._build_classification_prompt(query)
+        response = self.llm.invoke(classification_prompt)
+        return self._parse_classification_response(response.content)
+
+    def _rule_based_classification(self, query: str) -> str:
+        """
+        Classify query using simple rule-based approach
+
+        Args:
+            query: The user query
+
+        Returns:
+            The classified tool name
+        """
+        query_lower = query.lower()
 
         # Basic location detection
-        location_terms: List[str] = ["where", "find", "location"]
+        location_terms = ["where", "find", "location", "where is", "how do i get to"]
         if any(term in query_lower for term in location_terms):
             return "location"
 
         # Basic locker detection
-        if "locker" in query_lower:
+        locker_terms = ["locker", "basement", "access"]
+        if any(term in query_lower for term in locker_terms):
             return "locker"
+
+        # FAQ detection
+        faq_terms = ["how do i", "how to", "what is the", "can i", "when is"]
+        if any(query_lower.startswith(term) for term in faq_terms):
+            return "faq"
 
         # Default to general QA
         return "qa"
@@ -75,13 +111,13 @@ class ToolClassifier:
             A formatted prompt for the LLM
         """
         # Create a detailed prompt with examples for better classification
-        tool_descriptions: str = "\n\n".join([
+        tool_descriptions = "\n\n".join([
             f"Tool: {tool['name']}\nDescription: {tool['description']}"
             for tool in self._tools
         ])
 
         # Add examples to help the model understand common patterns
-        examples: str = """
+        examples = """
 Examples:
 1. "Where is the library?" → location
 2. "How do I get my enrollment certificate?" → faq
@@ -120,7 +156,7 @@ Analyze the query and determine which tool is most appropriate to handle it. Res
         response = response.strip().lower()
 
         # Check if the response contains any of our tool names
-        valid_tools: List[str] = ["location", "locker", "faq", "qa"]
+        valid_tools = ["location", "locker", "faq", "qa"]
         for tool_name in valid_tools:
             if tool_name in response:
                 return tool_name
@@ -149,12 +185,12 @@ async def get_appropriate_tool(update: Update, context: ContextTypes.DEFAULT_TYP
         context.bot_data["tool_classifier"] = ToolClassifier(llm)
 
     # Classify the query
-    classifier: ToolClassifier = context.bot_data["tool_classifier"]
-    tool_name: str = await classifier.classify_query(query, context, update)
+    classifier = context.bot_data["tool_classifier"]
+    tool_name = await classifier.classify_query(query, context, update)
 
     # Get the appropriate tool from the registry
     from uni_ai_chatbot.tools.tools_architecture import tool_registry, Tool
-    tool: Optional[Tool] = tool_registry.get_tool_by_name(tool_name)
+    tool = tool_registry.get_tool_by_name(tool_name)
 
     # If no tool found, default to QA
     if not tool:

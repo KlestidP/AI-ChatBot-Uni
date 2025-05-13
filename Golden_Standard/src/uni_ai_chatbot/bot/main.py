@@ -1,25 +1,23 @@
-import os
 import logging
 from typing import Optional
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from telegram import BotCommand
-from dotenv import load_dotenv
+
+from uni_ai_chatbot.configurations.config import TELEGRAM_TOKEN, MISTRAL_API_KEY, BOT_COMMANDS
 from uni_ai_chatbot.bot.commands import start, help_command, where_command, find_command
 from uni_ai_chatbot.bot.conversation import handle_message
 from uni_ai_chatbot.bot.callbacks import handle_location_callback
-from uni_ai_chatbot.services.qa_service_supabase import initialize_qa_chain, get_scoped_qa_chain
+from uni_ai_chatbot.services.qa_service_supabase import initialize_qa_chain
 from uni_ai_chatbot.data.campus_map_data import load_campus_map
 from uni_ai_chatbot.data.locker_hours_loader import load_locker_hours
 from uni_ai_chatbot.services.locker_service import parse_locker_hours
 from uni_ai_chatbot.tools.tools_architecture import tool_registry
 
-load_dotenv()
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-TELEGRAM_TOKEN: Optional[str] = os.environ.get("TELEGRAM_TOKEN")
-MISTRAL_API_KEY: Optional[str] = os.environ.get("MISTRAL_API_KEY")
+
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN is not set in environment variables")
 if not MISTRAL_API_KEY:
@@ -35,14 +33,19 @@ async def set_bot_commands(application: Application) -> None:
         application: Telegram Application instance
     """
     await application.bot.set_my_commands([
-        BotCommand("start", "Start the bot"),
-        BotCommand("help", "Get help using the bot"),
-        BotCommand("where", "Find a place on campus"),
-        BotCommand("find", "Find places with specific features")
+        BotCommand(command, description) for command, description in BOT_COMMANDS
     ])
 
 
 def main() -> None:
+    """Main function to initialize and run the bot"""
+    # Check and initialize database if needed
+    try:
+        from uni_ai_chatbot.scripts.init_setup import check_and_initialize_database
+        check_and_initialize_database()
+    except Exception as e:
+        logger.warning(f"Database initialization check failed: {e}. Continuing anyway...")
+
     """Main function to initialize and run the bot"""
     application: Application = Application.builder().token(TELEGRAM_TOKEN).build()
 
