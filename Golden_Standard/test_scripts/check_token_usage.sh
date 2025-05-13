@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 
 if [ -z "$1" ]; then
     echo -e "${RED}${BOLD}Error:${NC} Please provide your bot token"
-    echo "Usage: ./check_token_usage.sh PROVIDE_YOUR_TOKER"
+    echo "Usage: ./check_token_usage.sh YOUR_BOT_TOKEN"
     exit 1
 fi
 
