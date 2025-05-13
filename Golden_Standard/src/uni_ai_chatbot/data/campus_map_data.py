@@ -1,31 +1,6 @@
-import os
 import re
 from typing import List, Dict, Any, Optional, Set
-from supabase import create_client, Client
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-# Get Supabase credentials
-SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY: Optional[str] = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
-
-def get_supabase_client() -> Client:
-    """
-    Initialize and return a Supabase client
-
-    Returns:
-        A configured Supabase client
-
-    Raises:
-        ValueError: If credentials are not found
-    """
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        raise ValueError("Supabase credentials not found in environment variables")
-
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+from uni_ai_chatbot.utils.database import get_supabase_client
 
 
 def load_campus_map() -> List[Dict[str, Any]]:
@@ -38,7 +13,7 @@ def load_campus_map() -> List[Dict[str, Any]]:
     Raises:
         Exception: If there's an error fetching data
     """
-    supabase: Client = get_supabase_client()
+    supabase = get_supabase_client()
 
     # Query the campus_map table
     response = supabase.table("campus_map").select("*").execute()

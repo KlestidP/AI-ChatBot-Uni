@@ -1,11 +1,12 @@
-import os
 import logging
-from typing import Tuple, Any, Optional
+from typing import Tuple, Any
 from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_mistralai import MistralAIEmbeddings
 from langchain_mistralai import ChatMistralAI
-from supabase import create_client, Client
+
+from uni_ai_chatbot.configurations.config import MISTRAL_API_KEY, LLM_MODEL, LLM_TEMPERATURE, LLM_MAX_RETRIES
+from uni_ai_chatbot.utils.database import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
@@ -26,26 +27,20 @@ def initialize_qa_chain() -> Tuple[Any, ChatMistralAI, Any, Any, Any, Any]:
     Raises:
         ValueError: If required environment variables are not set
     """
-    MISTRAL_API_KEY: Optional[str] = os.environ.get("MISTRAL_API_KEY")
-    SUPABASE_URL: Optional[str] = os.environ.get("SUPABASE_URL")
-    SUPABASE_KEY: Optional[str] = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-
     if not MISTRAL_API_KEY:
         raise ValueError("MISTRAL_API_KEY is not set in environment variables")
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        raise ValueError("Supabase credentials not found in environment variables")
 
     try:
         logger.info("Initializing QA chain with Supabase vector store")
 
         # Set up embeddings
-        embeddings: MistralAIEmbeddings = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
+        embeddings = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
 
         # Create Supabase client
-        supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        supabase_client = get_supabase_client()
 
         # Create the base vector store
-        vector_store: SupabaseVectorStore = SupabaseVectorStore(
+        vector_store = SupabaseVectorStore(
             client=supabase_client,
             embedding=embeddings,
             table_name="documents",
@@ -53,20 +48,20 @@ def initialize_qa_chain() -> Tuple[Any, ChatMistralAI, Any, Any, Any, Any]:
         )
 
         # Initialize the language model
-        llm: ChatMistralAI = ChatMistralAI(
-            model="mistral-large-latest",
-            temperature=0,
-            max_retries=2,
+        llm = ChatMistralAI(
+            model=LLM_MODEL,
+            temperature=LLM_TEMPERATURE,
+            max_retries=LLM_MAX_RETRIES,
             api_key=MISTRAL_API_KEY
         )
 
         # Create specialized QA chains for different tool types
-        location_qa_chain: RetrievalQA = get_scoped_qa_chain(vector_store, llm, "location")
-        locker_qa_chain: RetrievalQA = get_scoped_qa_chain(vector_store, llm, "locker")
-        faq_qa_chain: RetrievalQA = get_scoped_qa_chain(vector_store, llm, "qa")  # Use "qa" type for FAQs
+        location_qa_chain = get_scoped_qa_chain(vector_store, llm, "location")
+        locker_qa_chain = get_scoped_qa_chain(vector_store, llm, "locker")
+        faq_qa_chain = get_scoped_qa_chain(vector_store, llm, "qa")  # Use "qa" type for FAQs
 
         # Create the base QA chain with the ability to access all data
-        general_qa_chain: RetrievalQA = RetrievalQA.from_chain_type(
+        general_qa_chain = RetrievalQA.from_chain_type(
             llm=llm,
             retriever=vector_store.as_retriever(search_kwargs={"k": 4}),
             return_source_documents=True
