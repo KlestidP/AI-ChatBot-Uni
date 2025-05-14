@@ -31,13 +31,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Send a message when the command /help is issued.
-
-    Args:
-        update: Telegram Update object
-        context: Telegram context
-    """
+    """Send a message when the command /help is issued."""
     message: Message = update.message
 
     await message.reply_text(
@@ -45,6 +39,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• 📍 `/where [location]` — Find places on campus (e.g., Ocean Lab, C3, IRC).\n\n"
         "• 🔍 `/find [feature]` — Find places with specific features (e.g., printer, food, study).\n\n"
         "• 🧺 *Locker hours* — Ask for locker access times in any college.\n\n"
+        "• 🍽 *Servery hours* — Ask for meal times in any college or the coffee bar.\n\n"
+        "• 📚 *Handbooks* — Get program handbooks or ask about course requirements.\n\n"
         "• ❓ *University FAQs* — Ask about documents, laundry, residence permits, etc.\n\n"
         "💬 Just type your question — I'll understand natural language too!\n\n"
         "🔒 Bot is limited to university-related queries only.",

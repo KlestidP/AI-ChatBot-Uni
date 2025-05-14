@@ -41,6 +41,19 @@ class ToolClassifier:
         if 'locker_conversations' in context.bot_data and user_id in context.bot_data['locker_conversations']:
             return "locker"  # Continue the locker conversation
 
+        # Add this new check for servery conversations
+        if 'servery_conversations' in context.bot_data and user_id in context.bot_data['servery_conversations']:
+            return "servery"  # Continue the servery conversation
+
+        # Check if we're in an active handbook conversation
+        if 'handbook_conversations' in context.bot_data and user_id in context.bot_data['handbook_conversations']:
+            return "handbook"
+
+        # Check if we're in an active FAQ conversation
+        if 'faq_conversations' in context.bot_data and user_id in context.bot_data['faq_conversations']:
+            return "faq"
+
+
         # Use the LLM if available and enabled
         if self.llm and ENABLE_LLM_CLASSIFICATION:
             try:
@@ -92,6 +105,12 @@ class ToolClassifier:
         if any(term in query_lower for term in locker_terms):
             return "locker"
 
+        servery_terms = ["servery", "food", "meal", "eat", "dining", "breakfast", "lunch", "dinner", "coffee bar",
+                         "menu", "cafeteria"]
+        time_terms = ["hours", "time", "open", "when", "schedule"]
+        if any(term in query_lower for term in servery_terms) and any(term in query_lower for term in time_terms):
+            return "servery"
+
         # Handbook detection (add this new section)
         handbook_terms = ["handbook", "program", "major", "degree", "curriculum", "syllabus"]
         if any(term in query_lower for term in handbook_terms):
@@ -115,33 +134,33 @@ class ToolClassifier:
 
         # Add examples to help the model understand common patterns
         examples = """
-    Examples:
-    1. "Where is the library?" → location
-    2. "How do I get my enrollment certificate?" → faq
-    3. "When are the locker hours for Krupp College?" → locker
-    4. "What's the address of the university?" → qa
-    5. "Where can I print documents?" → location
-    6. "Tell me about the semester ticket" → faq
-    7. "How to change my address in Bremen?" → faq
-    8. "What's the student emergency number?" → faq
-    9. "Where can I get food on campus?" → location
-    10. "What are the requirements for Computer Science?" → handbook
-    11. "Can you show me the handbook for Math?" → handbook
-    12. "How many credits do I need for Engineering?" → handbook
-    13. "What courses are in the Biology program?" → handbook
-    """
+        Examples:
+        1. "Where is the library?" → location
+        2. "How do I get my enrollment certificate?" → faq
+        3. "When are the locker hours for Krupp College?" → locker
+        4. "What's the address of the university?" → qa
+        5. "Where can I print documents?" → location
+        6. "Tell me about the semester ticket" → faq
+        7. "How to change my address in Bremen?" → faq
+        8. "What's the student emergency number?" → faq
+        9. "Where can I get food on campus?" → location
+        10. "When is breakfast served at Krupp College?" → servery
+        11. "What are the lunch hours at Mercator?" → servery
+        12. "Is the Coffee Bar open on weekends?" → servery
+        13. "Servery hours for Nordmetall" → servery
+        """
 
         return f"""You are a query classifier for a university chatbot. Your task is to classify the user's query into one of the available tools based on its intent.
 
-    Available tools:
-    {tool_descriptions}
+        Available tools:
+        {tool_descriptions}
 
-    {examples}
+        {examples}
 
-    User query: "{query}"
+        User query: "{query}"
 
-    Analyze the query and determine which tool is most appropriate to handle it. Respond with just the tool name and nothing else. The available tools are: location, locker, faq, qa, handbook.
-    """
+        Analyze the query and determine which tool is most appropriate to handle it. Respond with just the tool name and nothing else. The available tools are: location, locker, faq, qa, handbook, servery.
+        """
 
     def _parse_classification_response(self, response: str) -> str:
         """Parse the LLM's response to extract the tool name"""
@@ -149,7 +168,7 @@ class ToolClassifier:
         response = response.strip().lower()
 
         # Check if the response contains any of our tool names
-        valid_tools = ["location", "locker", "faq", "qa", "handbook"]
+        valid_tools = ["location", "locker", "faq", "qa", "handbook", "servery"]
         for tool_name in valid_tools:
             if tool_name in response:
                 return tool_name

@@ -7,10 +7,12 @@ from uni_ai_chatbot.configurations.config import TELEGRAM_TOKEN, MISTRAL_API_KEY
 from uni_ai_chatbot.bot.commands import start, help_command, where_command, find_command, handbook_command
 from uni_ai_chatbot.bot.conversation import handle_message
 from uni_ai_chatbot.bot.callbacks import handle_location_callback
+from uni_ai_chatbot.data.servery_hours_loader import load_servery_hours
 from uni_ai_chatbot.services.qa_service_supabase import initialize_qa_chain
 from uni_ai_chatbot.data.campus_map_data import load_campus_map
 from uni_ai_chatbot.data.locker_hours_loader import load_locker_hours
 from uni_ai_chatbot.services.locker_service import parse_locker_hours
+from uni_ai_chatbot.services.servery_service import parse_servery_hours
 from uni_ai_chatbot.tools.tools_architecture import tool_registry
 
 logging.basicConfig(
@@ -61,6 +63,7 @@ def main() -> None:
     application.bot_data["locker_qa_chain"] = locker_qa_chain
     application.bot_data["faq_qa_chain"] = faq_qa_chain
     application.bot_data["handbook_qa_chain"] = handbook_qa_chain  # Backward compatibility
+    application.bot_data["servery_hours"] = parse_servery_hours(load_servery_hours())
     application.bot_data["qa_chain"] = general_qa_chain  # Backward compatibility
 
     # Load data from Supabase
