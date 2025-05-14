@@ -34,6 +34,12 @@ class ToolClassifier:
         Returns:
             The name of the tool that should handle the query
         """
+        # First check if query is university-related
+        from uni_ai_chatbot.utils.content_filter import is_university_related
+        is_relevant, _ = is_university_related(query)
+        if not is_relevant:
+            return "non_university"
+
         # Check for active conversations
         user_id = update.effective_user.id
 

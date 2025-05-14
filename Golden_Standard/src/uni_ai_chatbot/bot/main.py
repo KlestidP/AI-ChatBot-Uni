@@ -4,7 +4,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram import BotCommand
 
 from uni_ai_chatbot.configurations.config import TELEGRAM_TOKEN, MISTRAL_API_KEY, BOT_COMMANDS
-from uni_ai_chatbot.bot.commands import start, help_command, where_command, find_command, handbook_command
+from uni_ai_chatbot.bot.commands import start, help_command, where_command, find_command, handbook_command, \
+    change_provider_command, list_providers_command
 from uni_ai_chatbot.bot.conversation import handle_message
 from uni_ai_chatbot.bot.callbacks import handle_location_callback
 from uni_ai_chatbot.data.servery_hours_loader import load_servery_hours
@@ -79,6 +80,8 @@ def main() -> None:
     application.add_handler(CommandHandler("where", where_command))
     application.add_handler(CommandHandler("find", find_command))
     application.add_handler(CommandHandler("handbook", handbook_command))
+    application.add_handler(CommandHandler("provider", change_provider_command))
+    application.add_handler(CommandHandler("providers", list_providers_command))
     application.add_handler(CallbackQueryHandler(handle_location_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

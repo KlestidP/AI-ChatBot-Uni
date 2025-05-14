@@ -2,8 +2,10 @@ import logging
 from typing import Tuple, Any
 from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import SupabaseVectorStore
+from langchain_core.prompts import PromptTemplate
 from langchain_mistralai import MistralAIEmbeddings
 from langchain_mistralai import ChatMistralAI
+from langchain_core.runnables import RunnablePassthrough
 
 from uni_ai_chatbot.configurations.config import MISTRAL_API_KEY, LLM_MODEL, LLM_TEMPERATURE, LLM_MAX_RETRIES
 from uni_ai_chatbot.utils.database import get_supabase_client
@@ -12,35 +14,40 @@ from uni_ai_chatbot.utils.custom_supabase import FixedSupabaseVectorStore
 logger = logging.getLogger(__name__)
 
 
-def initialize_qa_chain() -> Tuple[Any, ChatMistralAI, Any, Any, Any, Any, Any]:
-    """
-    Initialize the QA chain using Supabase vector store
+def get_qa_prompt_template() -> PromptTemplate:
+    """Get the QA prompt template with university scope limitation instructions"""
+    prompt_template = """You are a helpful university information bot for Constructor University Bremen. Your purpose is to assist students, faculty, and visitors with information about the university.
 
-    Returns:
-        Tuple containing:
-        - vector_store: The Supabase vector store
-        - llm: The language model
-        - general_qa_chain: Chain that can access all data
-        - location_qa_chain: Chain for location data
-        - locker_qa_chain: Chain for locker data
-        - faq_qa_chain: Chain for FAQ data
+IMPORTANT: Only answer questions related to Constructor University Bremen, its campus, programs, facilities, procedures, or academic matters. If the question is not directly related to the university, politely explain that you can only discuss university-related topics.
 
-    Raises:
-        ValueError: If required environment variables are not set
-    """
-    if not MISTRAL_API_KEY:
-        raise ValueError("MISTRAL_API_KEY is not set in environment variables")
+Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
+Context:
+{context}
+
+Question: {question}
+
+When answering:
+1. Be concise and direct
+2. Include relevant details like locations, times, and contact information when available
+3. Only discuss university-related matters
+4. If the question is not about Constructor University Bremen, politely redirect the user
+
+Answer:
+"""
+    return PromptTemplate.from_template(prompt_template)
+
+
+def initialize_qa_chain():
+    """Initialize QA chain with Supabase vector store"""
     try:
-        logger.info("Initializing QA chain with Supabase vector store")
-
-        # Set up embeddings
+        # Initialize embeddings
         embeddings = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
 
-        # Create Supabase client
+        # Initialize Supabase client
         supabase_client = get_supabase_client()
 
-        # Create the base vector store
+        # Create vector store
         vector_store = FixedSupabaseVectorStore(
             client=supabase_client,
             embedding=embeddings,
@@ -48,29 +55,55 @@ def initialize_qa_chain() -> Tuple[Any, ChatMistralAI, Any, Any, Any, Any, Any]:
             query_name="match_documents"
         )
 
-        # Initialize the language model
+        # Initialize LLM
         llm = ChatMistralAI(
-            model=LLM_MODEL,
-            temperature=LLM_TEMPERATURE,
-            max_retries=LLM_MAX_RETRIES,
+            model="mistral-large-latest",
+            temperature=0,
             api_key=MISTRAL_API_KEY
         )
 
-        # Create specialized QA chains for different tool types
-        location_qa_chain = get_scoped_qa_chain(vector_store, llm, "location")
-        locker_qa_chain = get_scoped_qa_chain(vector_store, llm, "locker")
-        faq_qa_chain = get_scoped_qa_chain(vector_store, llm, "qa")  # Use "qa" type for FAQs
-        handbook_qa_chain = get_scoped_qa_chain(vector_store, llm, "handbook")  # Use "handbook" type for handbooks
+        # Create custom prompt
+        qa_prompt = get_qa_prompt_template()
 
-        # Create the base QA chain with the ability to access all data
-        general_qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            retriever=vector_store.as_retriever(search_kwargs={"k": 4}),
-            return_source_documents=True
+        # Create retrievers for different document types
+        general_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {}, "k": 6, "score_threshold": 0.5}
         )
 
-        logger.info("Successfully initialized QA chains")
-        return vector_store, llm, general_qa_chain, location_qa_chain, locker_qa_chain, faq_qa_chain, handbook_qa_chain
+        location_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {"metadata": {"tool": "location"}}, "k": 4}
+        )
+
+        locker_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {"metadata": {"tool": "locker"}}, "k": 4}
+        )
+
+        faq_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {"metadata": {"tool": "qa"}}, "k": 4}
+        )
+
+        handbook_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {"metadata": {"tool": "handbook"}}, "k": 6}
+        )
+
+        # Create QA chains with the custom prompt
+        def create_chain(retriever):
+            return RetrievalQA.from_chain_type(
+                llm=llm,
+                retriever=retriever,
+                return_source_documents=True,
+                chain_type_kwargs={"prompt": qa_prompt}
+            )
+
+        # Create specialized QA chains
+        general_qa_chain = create_chain(general_retriever)
+        location_qa_chain = create_chain(location_retriever)
+        locker_qa_chain = create_chain(locker_retriever)
+        faq_qa_chain = create_chain(faq_retriever)
+        handbook_qa_chain = create_chain(handbook_retriever)
+
+        return (vector_store, llm, general_qa_chain, location_qa_chain,
+                locker_qa_chain, faq_qa_chain, handbook_qa_chain)
 
     except Exception as e:
         logger.error(f"Error initializing QA chain: {e}")
@@ -103,3 +136,82 @@ def get_scoped_qa_chain(vector_store: SupabaseVectorStore, llm: ChatMistralAI, t
         retriever=retriever,
         return_source_documents=True
     )
+
+
+def initialize_qa_chain_with_provider(provider=None, api_key=None, model=None):
+    """Initialize QA chain with specific provider and API key if provided"""
+    from uni_ai_chatbot.services.ai_provider_service import get_embeddings_model, get_llm_model
+    from uni_ai_chatbot.configurations.config import DEFAULT_PROVIDER, MISTRAL_API_KEY
+
+    try:
+        # Get the embeddings model for the specified provider
+        embeddings = get_embeddings_model(provider, api_key)
+
+        # Get Supabase client
+        supabase_client = get_supabase_client()
+
+        # Create vector store
+        vector_store = FixedSupabaseVectorStore(
+            client=supabase_client,
+            embedding=embeddings,
+            table_name="documents",
+            query_name="match_documents"
+        )
+
+        # Get LLM model
+        llm = get_llm_model(provider, api_key, model)
+
+        # Create retrievers for different document types
+        general_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {}, "k": 6, "score_threshold": 0.5}
+        )
+
+        location_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {"metadata": {"tool": "location"}}, "k": 4}
+        )
+
+        locker_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {"metadata": {"tool": "locker"}}, "k": 4}
+        )
+
+        faq_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {"metadata": {"tool": "qa"}}, "k": 4}
+        )
+
+        handbook_retriever = vector_store.as_retriever(
+            search_kwargs={"filter": {"metadata": {"tool": "handbook"}}, "k": 6}
+        )
+
+        # Create QA chains for different document types
+        general_qa_chain = RetrievalQA.from_chain_type(
+            llm=llm, retriever=general_retriever, return_source_documents=True
+        )
+
+        location_qa_chain = RetrievalQA.from_chain_type(
+            llm=llm, retriever=location_retriever, return_source_documents=True
+        )
+
+        locker_qa_chain = RetrievalQA.from_chain_type(
+            llm=llm, retriever=locker_retriever, return_source_documents=True
+        )
+
+        faq_qa_chain = RetrievalQA.from_chain_type(
+            llm=llm, retriever=faq_retriever, return_source_documents=True
+        )
+
+        handbook_qa_chain = RetrievalQA.from_chain_type(
+            llm=llm, retriever=handbook_retriever, return_source_documents=True
+        )
+
+        return (vector_store, llm, general_qa_chain, location_qa_chain,
+                locker_qa_chain, faq_qa_chain, handbook_qa_chain)
+
+    except Exception as e:
+        logger.error(f"Error initializing QA chain with provider {provider}: {e}")
+        # If custom provider fails, fall back to default
+        if provider != DEFAULT_PROVIDER:
+            logger.info(f"Falling back to {DEFAULT_PROVIDER} provider")
+            return initialize_qa_chain_with_provider(DEFAULT_PROVIDER, MISTRAL_API_KEY)
+        else:
+            # If default provider fails, re-raise the exception
+            raise
