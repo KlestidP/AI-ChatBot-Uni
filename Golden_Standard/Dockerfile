@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Copy requirements file first to leverage Docker cache
-COPY uv.lock pyproject.toml README.md ./
+COPY uv.lock pyproject.toml ./
 
 # Install Python dependencies
 RUN uv sync --no-install-package uni_ai_chatbot

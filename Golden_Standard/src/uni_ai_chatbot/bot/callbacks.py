@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Any
 from telegram import Update, CallbackQuery
 from telegram.ext import ContextTypes
 from uni_ai_chatbot.bot.location_handlers import show_location_details
+from uni_ai_chatbot.services.handbook_service import handle_handbook_query
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -73,3 +74,19 @@ async def handle_location_callback(update: Update, context: ContextTypes.DEFAULT
             logger.error(f"Error handling handbook callback: {e}")
 
             await query.edit_message_text("Sorry, I encountered an error retrieving the handbook.")
+
+    # Add these cases to your handle_location_callback function
+    elif query.data == "hb_page:prev" or query.data == "hb_page:next":
+        # Change page number
+        if query.data == "hb_page:prev":
+            context.user_data['handbook_page'] = max(0, context.user_data.get('handbook_page', 0) - 1)
+        else:  # next
+            handbooks = context.bot_data.get("handbooks", [])
+            total_pages = (len(handbooks) + 10 - 1) // 10  # 10 is PAGE_SIZE
+            context.user_data['handbook_page'] = min(
+                total_pages - 1,
+                context.user_data.get('handbook_page', 0) + 1
+            )
+
+        # Re-display the handbook menu (now handles callbacks correctly)
+        await handle_handbook_query(update, context)
