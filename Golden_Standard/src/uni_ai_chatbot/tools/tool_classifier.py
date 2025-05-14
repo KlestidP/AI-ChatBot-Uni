@@ -92,6 +92,11 @@ class ToolClassifier:
         if any(term in query_lower for term in locker_terms):
             return "locker"
 
+        # Handbook detection (add this new section)
+        handbook_terms = ["handbook", "program", "major", "degree", "curriculum", "syllabus"]
+        if any(term in query_lower for term in handbook_terms):
+            return "handbook"
+
         # FAQ detection
         faq_terms = ["how do i", "how to", "what is the", "can i", "when is"]
         if any(query_lower.startswith(term) for term in faq_terms):
@@ -101,15 +106,7 @@ class ToolClassifier:
         return "qa"
 
     def _build_classification_prompt(self, query: str) -> str:
-        """
-        Build a prompt for the LLM to classify the query
-
-        Args:
-            query: The user's input text
-
-        Returns:
-            A formatted prompt for the LLM
-        """
+        """Build a prompt for the LLM to classify the query"""
         # Create a detailed prompt with examples for better classification
         tool_descriptions = "\n\n".join([
             f"Tool: {tool['name']}\nDescription: {tool['description']}"
@@ -118,45 +115,41 @@ class ToolClassifier:
 
         # Add examples to help the model understand common patterns
         examples = """
-Examples:
-1. "Where is the library?" → location
-2. "How do I get my enrollment certificate?" → faq
-3. "When are the locker hours for Krupp College?" → locker
-4. "What's the address of the university?" → qa
-5. "Where can I print documents?" → location
-6. "Tell me about the semester ticket" → faq
-7. "How to change my address in Bremen?" → faq
-8. "What's the student emergency number?" → faq
-9. "Where can I get food on campus?" → location
-"""
+    Examples:
+    1. "Where is the library?" → location
+    2. "How do I get my enrollment certificate?" → faq
+    3. "When are the locker hours for Krupp College?" → locker
+    4. "What's the address of the university?" → qa
+    5. "Where can I print documents?" → location
+    6. "Tell me about the semester ticket" → faq
+    7. "How to change my address in Bremen?" → faq
+    8. "What's the student emergency number?" → faq
+    9. "Where can I get food on campus?" → location
+    10. "What are the requirements for Computer Science?" → handbook
+    11. "Can you show me the handbook for Math?" → handbook
+    12. "How many credits do I need for Engineering?" → handbook
+    13. "What courses are in the Biology program?" → handbook
+    """
 
         return f"""You are a query classifier for a university chatbot. Your task is to classify the user's query into one of the available tools based on its intent.
 
-Available tools:
-{tool_descriptions}
+    Available tools:
+    {tool_descriptions}
 
-{examples}
+    {examples}
 
-User query: "{query}"
+    User query: "{query}"
 
-Analyze the query and determine which tool is most appropriate to handle it. Respond with just the tool name and nothing else. The available tools are: location, locker, faq, qa.
-"""
+    Analyze the query and determine which tool is most appropriate to handle it. Respond with just the tool name and nothing else. The available tools are: location, locker, faq, qa, handbook.
+    """
 
     def _parse_classification_response(self, response: str) -> str:
-        """
-        Parse the LLM's response to extract the tool name
-
-        Args:
-            response: The LLM's response text
-
-        Returns:
-            The extracted tool name
-        """
+        """Parse the LLM's response to extract the tool name"""
         # Clean the response text
         response = response.strip().lower()
 
         # Check if the response contains any of our tool names
-        valid_tools = ["location", "locker", "faq", "qa"]
+        valid_tools = ["location", "locker", "faq", "qa", "handbook"]
         for tool_name in valid_tools:
             if tool_name in response:
                 return tool_name
@@ -189,7 +182,7 @@ async def get_appropriate_tool(update: Update, context: ContextTypes.DEFAULT_TYP
     tool_name = await classifier.classify_query(query, context, update)
 
     # Get the appropriate tool from the registry
-    from uni_ai_chatbot.tools.tools_architecture import tool_registry, Tool
+    from uni_ai_chatbot.tools.tools_architecture import tool_registry
     tool = tool_registry.get_tool_by_name(tool_name)
 
     # If no tool found, default to QA

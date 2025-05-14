@@ -7,11 +7,12 @@ from langchain_mistralai import ChatMistralAI
 
 from uni_ai_chatbot.configurations.config import MISTRAL_API_KEY, LLM_MODEL, LLM_TEMPERATURE, LLM_MAX_RETRIES
 from uni_ai_chatbot.utils.database import get_supabase_client
+from uni_ai_chatbot.utils.custom_supabase import FixedSupabaseVectorStore
 
 logger = logging.getLogger(__name__)
 
 
-def initialize_qa_chain() -> Tuple[Any, ChatMistralAI, Any, Any, Any, Any]:
+def initialize_qa_chain() -> Tuple[Any, ChatMistralAI, Any, Any, Any, Any, Any]:
     """
     Initialize the QA chain using Supabase vector store
 
@@ -40,7 +41,7 @@ def initialize_qa_chain() -> Tuple[Any, ChatMistralAI, Any, Any, Any, Any]:
         supabase_client = get_supabase_client()
 
         # Create the base vector store
-        vector_store = SupabaseVectorStore(
+        vector_store = FixedSupabaseVectorStore(
             client=supabase_client,
             embedding=embeddings,
             table_name="documents",
@@ -59,6 +60,7 @@ def initialize_qa_chain() -> Tuple[Any, ChatMistralAI, Any, Any, Any, Any]:
         location_qa_chain = get_scoped_qa_chain(vector_store, llm, "location")
         locker_qa_chain = get_scoped_qa_chain(vector_store, llm, "locker")
         faq_qa_chain = get_scoped_qa_chain(vector_store, llm, "qa")  # Use "qa" type for FAQs
+        handbook_qa_chain = get_scoped_qa_chain(vector_store, llm, "handbook")  # Use "handbook" type for handbooks
 
         # Create the base QA chain with the ability to access all data
         general_qa_chain = RetrievalQA.from_chain_type(
@@ -68,7 +70,7 @@ def initialize_qa_chain() -> Tuple[Any, ChatMistralAI, Any, Any, Any, Any]:
         )
 
         logger.info("Successfully initialized QA chains")
-        return vector_store, llm, general_qa_chain, location_qa_chain, locker_qa_chain, faq_qa_chain
+        return vector_store, llm, general_qa_chain, location_qa_chain, locker_qa_chain, faq_qa_chain, handbook_qa_chain
 
     except Exception as e:
         logger.error(f"Error initializing QA chain: {e}")
