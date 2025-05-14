@@ -184,6 +184,23 @@ class ToolRegistry:
         return [tool.get_tool_description() for tool in self.tools]
 
 
+class HandbookTool(Tool):
+    """Tool for handling handbook and major-related queries"""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="handbook",
+            description="Provides access to university program handbooks and information about majors. "
+                        "Use for questions about degree programs, major requirements, courses, and "
+                        "curriculum information."
+        )
+
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> None:
+        """Process a handbook-related query"""
+        from uni_ai_chatbot.services.handbook_service import handle_handbook_query
+        await handle_handbook_query(update, context, query)
+
+
 # Create global tool registry
 tool_registry: ToolRegistry = ToolRegistry()
 
@@ -192,3 +209,4 @@ tool_registry.register_tool(LockerTool())
 tool_registry.register_tool(LocationTool())
 tool_registry.register_tool(QATool())
 tool_registry.register_tool(FAQTool())
+tool_registry.register_tool(HandbookTool())

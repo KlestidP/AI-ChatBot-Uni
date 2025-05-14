@@ -118,7 +118,7 @@ async def _handle_feature_based_query(update: Update, campus_map: List[Dict[str,
         return True
     else:
         keyboard = [
-            [InlineKeyboardButton(text=loc['name'], callback_data=f"location:{loc['id']}")]
+            [InlineKeyboardButton(text=loc['name'], callback_data=f"location:{str(loc['id'])}")]
             for loc in locations[:MAX_LOCATIONS_TO_DISPLAY]
         ]
 
@@ -177,7 +177,7 @@ List just the names of locations, one per line, with no additional text.
         return False
 
     keyboard = [
-        [InlineKeyboardButton(text=loc['name'], callback_data=f"location:{loc['id']}")]
+        [InlineKeyboardButton(text=loc['name'], callback_data=f"location:{str(loc['id'])}")]
         for loc in matched_locations[:MAX_LOCATIONS_TO_DISPLAY]
     ]
 

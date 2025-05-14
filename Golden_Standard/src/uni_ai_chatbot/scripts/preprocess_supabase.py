@@ -6,6 +6,7 @@ from langchain_community.vectorstores import SupabaseVectorStore
 
 from uni_ai_chatbot.configurations.config import MISTRAL_API_KEY
 from uni_ai_chatbot.utils.database import get_supabase_client
+from uni_ai_chatbot.utils.custom_supabase import FixedSupabaseVectorStore
 from uni_ai_chatbot.data.resources import load_faq_answers
 from uni_ai_chatbot.data.campus_map_data import load_campus_map
 from uni_ai_chatbot.data.locker_hours_loader import load_locker_hours
@@ -21,7 +22,7 @@ if not MISTRAL_API_KEY:
 
 
 def create_documents():
-    """Create documents from FAQ, campus data, and locker data with tool classifications"""
+    """Create documents from FAQ, campus data, locker data, and handbooks with tool classifications"""
     documents = []
     logger.info("Loading FAQ data...")
 
@@ -87,18 +88,25 @@ def create_documents():
         ))
 
     logger.info(f"Loaded {len(locker_data)} locker hours records")
+
+    # Add handbook data as documents
+    logger.info("Loading handbook data...")
+    from uni_ai_chatbot.data.handbook_processor import process_handbooks
+    handbook_docs = process_handbooks(max_chunk_size=500)
+    documents.extend(handbook_docs)
+    logger.info(f"Loaded {len(handbook_docs)} handbook chunks")
+
     return documents
 
-
 def process_and_save_to_supabase():
-    """Process documents and save embeddings to Supabase vector store"""
+    """Process documents and save embeddings to Supabase vector store in batches"""
     logger.info("Creating documents...")
     documents = create_documents()
 
     logger.info("Splitting documents...")
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=200,
-        chunk_overlap=20,
+        chunk_size=500,  # Smaller chunk size
+        chunk_overlap=50,
         separators=["\n\n", "\n", ".", " ", ""]
     )
     split_docs = text_splitter.split_documents(documents)
@@ -110,36 +118,66 @@ def process_and_save_to_supabase():
     logger.info("Creating Supabase client...")
     supabase_client = get_supabase_client()
 
-    logger.info("Storing embeddings in Supabase...")
-
     # Fix: Use a safer approach to clear existing documents
     try:
-        # First, check if the table has any documents
-        response = supabase_client.table("documents").select("id").limit(1).execute()
-
-        if response and hasattr(response, 'data') and len(response.data) > 0:
-            logger.info("Clearing existing documents...")
-            # Use a safer approach to delete all documents - delete them in batches
-            # with a true condition rather than no condition
-            supabase_client.table("documents").delete().neq("id", 0).execute()
+        logger.info("Clearing existing documents...")
+        # Delete documents in batches to avoid overloading the database
+        delete_all_documents(supabase_client)
     except Exception as e:
         logger.warning(f"Error clearing existing documents: {e}")
         logger.info("Proceeding to add new documents anyway...")
 
-    # Create a new vector store
+    # Process in smaller batches to avoid API limitations
+    batch_size = 100  # Process 100 documents at a time
+    total_docs = len(split_docs)
+
+    logger.info(f"Adding {total_docs} documents to vector store in batches of {batch_size}...")
+
+    for i in range(0, total_docs, batch_size):
+        batch_end = min(i + batch_size, total_docs)
+        current_batch = split_docs[i:batch_end]
+
+        try:
+            logger.info(
+                f"Processing batch {i // batch_size + 1}/{(total_docs + batch_size - 1) // batch_size}: documents {i} to {batch_end - 1}")
+
+            # Create embeddings for this batch
+            batch_texts = [doc.page_content for doc in current_batch]
+            batch_metadatas = [doc.metadata for doc in current_batch]
+
+            # Add these documents to the vector store
+            FixedSupabaseVectorStore.from_texts(
+                texts=batch_texts,
+                embedding=embeddings,
+                metadatas=batch_metadatas,
+                client=supabase_client,
+                table_name="documents",
+                query_name="match_documents"
+            )
+
+            logger.info(f"Successfully added batch {i // batch_size + 1}")
+
+        except Exception as e:
+            logger.error(f"Error processing batch {i // batch_size + 1}: {e}")
+            # Continue with the next batch instead of failing everything
+
+    logger.info("Embeddings stored successfully in Supabase")
+    return None  # Don't return the vector store since we're creating it in batches
+
+
+def delete_all_documents(supabase_client):
+    """Delete all documents from the vector store"""
     try:
-        logger.info(f"Adding {len(split_docs)} documents to vector store...")
-        vector_store = SupabaseVectorStore.from_documents(
-            documents=split_docs,
-            embedding=embeddings,
-            client=supabase_client,
-            table_name="documents",
-            query_name="match_documents"
-        )
-        logger.info("Embeddings stored successfully in Supabase")
-        return vector_store
+        # Use a safe condition that covers all rows
+        response = supabase_client.table("documents").delete().neq("id", None).execute()
+        deleted_count = len(response.data) if hasattr(response, 'data') else 0
+        logger.info(f"Cleared {deleted_count} existing documents")
     except Exception as e:
-        logger.error(f"Error storing documents in vector store: {e}")
+        logger.warning(f"Error clearing documents: {e}")
+        # Log the actual error details
+        logger.warning(f"Error details: {str(e)}")
+        if hasattr(e, 'response') and e.response:
+            logger.warning(f"Response: {e.response.text}")
         raise
 
 

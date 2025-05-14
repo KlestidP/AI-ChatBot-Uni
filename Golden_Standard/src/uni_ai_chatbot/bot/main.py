@@ -4,7 +4,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram import BotCommand
 
 from uni_ai_chatbot.configurations.config import TELEGRAM_TOKEN, MISTRAL_API_KEY, BOT_COMMANDS
-from uni_ai_chatbot.bot.commands import start, help_command, where_command, find_command
+from uni_ai_chatbot.bot.commands import start, help_command, where_command, find_command, handbook_command
 from uni_ai_chatbot.bot.conversation import handle_message
 from uni_ai_chatbot.bot.callbacks import handle_location_callback
 from uni_ai_chatbot.services.qa_service_supabase import initialize_qa_chain
@@ -50,7 +50,7 @@ def main() -> None:
     application: Application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Initialize QA chain components with Supabase vector store
-    vector_store, llm, general_qa_chain, location_qa_chain, locker_qa_chain, faq_qa_chain = initialize_qa_chain()
+    vector_store, llm, general_qa_chain, location_qa_chain, locker_qa_chain, faq_qa_chain, handbook_qa_chain = initialize_qa_chain()
 
     # Store LLM instance for tool classifier
     application.bot_data["llm"] = llm
@@ -60,6 +60,7 @@ def main() -> None:
     application.bot_data["location_qa_chain"] = location_qa_chain
     application.bot_data["locker_qa_chain"] = locker_qa_chain
     application.bot_data["faq_qa_chain"] = faq_qa_chain
+    application.bot_data["handbook_qa_chain"] = handbook_qa_chain  # Backward compatibility
     application.bot_data["qa_chain"] = general_qa_chain  # Backward compatibility
 
     # Load data from Supabase
@@ -74,6 +75,7 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("where", where_command))
     application.add_handler(CommandHandler("find", find_command))
+    application.add_handler(CommandHandler("handbook", handbook_command))
     application.add_handler(CallbackQueryHandler(handle_location_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

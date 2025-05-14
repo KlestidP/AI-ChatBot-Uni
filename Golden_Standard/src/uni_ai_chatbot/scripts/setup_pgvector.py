@@ -38,7 +38,7 @@ def setup_pgvector():
         # Use SQL through postgrest instead of direct query
         create_table_query = """
         CREATE TABLE IF NOT EXISTS documents (
-            id SERIAL PRIMARY KEY,
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             content TEXT NOT NULL,
             metadata JSONB,
             embedding VECTOR(1024)

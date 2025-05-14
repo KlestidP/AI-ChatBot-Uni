@@ -20,7 +20,8 @@ BOT_COMMANDS = [
     ("start", "Start the bot"),
     ("help", "Get help using the bot"),
     ("where", "Find a place on campus"),
-    ("find", "Find places with specific features")
+    ("find", "Find places with specific features"),
+    ("handbook", "Get program handbooks")
 ]
 
 # LLM configuration

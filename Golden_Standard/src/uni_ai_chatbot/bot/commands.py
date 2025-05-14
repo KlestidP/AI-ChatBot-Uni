@@ -1,3 +1,4 @@
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message, User, Chat
 from telegram.constants import ParseMode
@@ -5,6 +6,11 @@ from telegram.ext import ContextTypes
 from uni_ai_chatbot.data.campus_map_data import find_location_by_name_or_alias, extract_location_name
 from uni_ai_chatbot.bot.location_handlers import show_location_details, handle_location_with_ai
 from uni_ai_chatbot.data.campus_map_data import extract_feature_keywords, find_locations_by_feature
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -108,9 +114,10 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             # Multiple locations found, show a keyboard to select
             keyboard: List[List[InlineKeyboardButton]] = []
             for loc in locations[:13]:  # Limit to 13 options
+                logger.debug(f"Location ID type: {type(loc['id'])}, value: {loc['id']}")
                 keyboard.append([InlineKeyboardButton(
                     text=loc['name'],
-                    callback_data=f"location:{loc['id']}"
+                    callback_data=f"location:{str(loc['id'])}"
                 )])
 
             reply_markup: InlineKeyboardMarkup = InlineKeyboardMarkup(keyboard)
@@ -126,3 +133,13 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         # Fall back to AI
         await handle_location_with_ai(update, context, query)
+
+
+async def handbook_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handle /handbook command
+    """
+    query = ' '.join(context.args) if context.args else None
+
+    from uni_ai_chatbot.services.handbook_service import handle_handbook_query
+    await handle_handbook_query(update, context, query)
