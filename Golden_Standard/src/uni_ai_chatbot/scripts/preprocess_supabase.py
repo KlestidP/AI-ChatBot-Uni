@@ -2,7 +2,6 @@ import logging
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_mistralai import MistralAIEmbeddings
-from langchain_community.vectorstores import SupabaseVectorStore
 
 from uni_ai_chatbot.configurations.config import MISTRAL_API_KEY
 from uni_ai_chatbot.utils.database import get_supabase_client
@@ -10,6 +9,8 @@ from uni_ai_chatbot.utils.custom_supabase import FixedSupabaseVectorStore
 from uni_ai_chatbot.data.resources import load_faq_answers
 from uni_ai_chatbot.data.campus_map_data import load_campus_map
 from uni_ai_chatbot.data.locker_hours_loader import load_locker_hours
+from uni_ai_chatbot.data.servery_hours_loader import load_servery_hours
+from uni_ai_chatbot.data.handbook_processor import process_handbooks
 
 # Setup logging
 logging.basicConfig(
@@ -89,14 +90,41 @@ def create_documents():
 
     logger.info(f"Loaded {len(locker_data)} locker hours records")
 
+    # Add servery hours data as documents
+    logger.info("Loading servery data...")
+    servery_data = load_servery_hours()
+    for record in servery_data:
+        college_name = record["colleges"]["name"] if record.get("colleges") else "Unknown"
+        day_name = record["days"]["name"] if record.get("days") else "Unknown"
+        meal_type = record["meal_type"] if record.get("meal_type") else "Unknown"
+
+        if record.get("time_ranges"):
+            time_info = f"{record['time_ranges']['start_time']} - {record['time_ranges']['end_time']}"
+        else:
+            time_info = "Hours not specified"
+
+        doc_content = f"Servery hours for {college_name}, {day_name}, {meal_type}: {time_info}"
+        documents.append(Document(
+            page_content=doc_content,
+            metadata={
+                "type": "servery",
+                "college": college_name,
+                "day": day_name,
+                "meal_type": meal_type,
+                "tool": "servery"
+            }
+        ))
+
+    logger.info(f"Loaded {len(servery_data)} servery hours records")
+
     # Add handbook data as documents
     logger.info("Loading handbook data...")
-    from uni_ai_chatbot.data.handbook_processor import process_handbooks
     handbook_docs = process_handbooks(max_chunk_size=500)
     documents.extend(handbook_docs)
     logger.info(f"Loaded {len(handbook_docs)} handbook chunks")
 
     return documents
+
 
 def process_and_save_to_supabase():
     """Process documents and save embeddings to Supabase vector store in batches"""
@@ -105,7 +133,7 @@ def process_and_save_to_supabase():
 
     logger.info("Splitting documents...")
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,  # Smaller chunk size
+        chunk_size=500,
         chunk_overlap=50,
         separators=["\n\n", "\n", ".", " ", ""]
     )
@@ -118,14 +146,25 @@ def process_and_save_to_supabase():
     logger.info("Creating Supabase client...")
     supabase_client = get_supabase_client()
 
-    # Fix: Use a safer approach to clear existing documents
+    # Check for existing documents
     try:
-        logger.info("Clearing existing documents...")
-        # Delete documents in batches to avoid overloading the database
-        delete_all_documents(supabase_client)
+        # Ask about dropping the table
+        user_input = input("Drop the documents table and recreate it? This will delete ALL existing documents. (y/n): ")
+        if user_input.lower() == 'y':
+            delete_all_documents(supabase_client)
+
+            # Ensure the table is recreated with the correct schema
+            logger.info("Recreating documents table...")
+            from uni_ai_chatbot.scripts.setup_pgvector import setup_pgvector
+            setup_pgvector()
+        else:
+            logger.info("Skipping deletion, will add new documents to existing ones")
     except Exception as e:
-        logger.warning(f"Error clearing existing documents: {e}")
-        logger.info("Proceeding to add new documents anyway...")
+        logger.warning(f"Error dropping table: {e}")
+        user_input = input("Continue anyway and try to add new documents? (y/n): ")
+        if user_input.lower() != 'y':
+            logger.info("Aborting operation as requested")
+            return
 
     # Process in smaller batches to avoid API limitations
     batch_size = 100  # Process 100 documents at a time
@@ -166,19 +205,26 @@ def process_and_save_to_supabase():
 
 
 def delete_all_documents(supabase_client):
-    """Delete all documents from the vector store"""
+    """Delete all documents by dropping the table completely - setup_pgvector will recreate it"""
     try:
-        # Use a safe condition that covers all rows
-        response = supabase_client.table("documents").delete().neq("id", None).execute()
-        deleted_count = len(response.data) if hasattr(response, 'data') else 0
-        logger.info(f"Cleared {deleted_count} existing documents")
+        logger.info("Dropping documents table...")
+
+        # Drop the table via SQL
+        try:
+            drop_response = supabase_client.rpc('execute_sql', {'sql': 'DROP TABLE IF EXISTS documents;'}).execute()
+            logger.info("Successfully dropped documents table")
+            return "All (table dropped)"
+        except Exception as sql_error:
+            logger.error(f"Failed to drop table via SQL: {sql_error}")
+            logger.error("You may need to manually run this SQL in the Supabase SQL editor:")
+            logger.error("DROP TABLE IF EXISTS documents;")
+            raise Exception("Cannot drop table - SQL execution failed")
+
     except Exception as e:
-        logger.warning(f"Error clearing documents: {e}")
-        # Log the actual error details
-        logger.warning(f"Error details: {str(e)}")
+        logger.error(f"Error dropping documents table: {e}")
         if hasattr(e, 'response') and e.response:
-            logger.warning(f"Response: {e.response.text}")
-        raise
+            logger.error(f"Response: {e.response.text}")
+        raise Exception(f"Failed to drop documents table: {str(e)}")
 
 
 if __name__ == "__main__":

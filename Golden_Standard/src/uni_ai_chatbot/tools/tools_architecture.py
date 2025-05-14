@@ -201,6 +201,24 @@ class HandbookTool(Tool):
         await handle_handbook_query(update, context, query)
 
 
+class ServeryTool(Tool):
+    """Tool for handling servery hours queries"""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="servery",
+            description="Provides information about dining halls and servery hours in university colleges. "
+                        "Use for questions about meal times, when to eat, breakfast, lunch, or dinner hours."
+        )
+
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> None:
+        """Process a servery-related query"""
+        from uni_ai_chatbot.services.servery_service import handle_servery_hours
+        await handle_servery_hours(update, context, query)
+
+# Register the tool
+
+
 # Create global tool registry
 tool_registry: ToolRegistry = ToolRegistry()
 
@@ -210,3 +228,4 @@ tool_registry.register_tool(LocationTool())
 tool_registry.register_tool(QATool())
 tool_registry.register_tool(FAQTool())
 tool_registry.register_tool(HandbookTool())
+tool_registry.register_tool(ServeryTool())
