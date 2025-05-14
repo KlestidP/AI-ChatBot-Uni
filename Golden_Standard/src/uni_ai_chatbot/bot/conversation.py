@@ -5,8 +5,11 @@ import logging
 from uni_ai_chatbot.utils.utils import handle_error
 from uni_ai_chatbot.tools.tool_classifier import get_appropriate_tool
 from uni_ai_chatbot.tools.tools_architecture import Tool
+from uni_ai_chatbot.utils.content_filter import is_university_related
+
 
 logger = logging.getLogger(__name__)
+
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -20,6 +23,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query: str = update.message.text
     user: User = update.effective_user
     chat: Chat = update.effective_chat
+
+    # Check if query is university-related
+    is_relevant, rejection_reason = is_university_related(query)
+    if not is_relevant:
+        logger.info(f"Rejected query from user {user.id}: {query} - Reason: {rejection_reason}")
+        await update.message.reply_text(
+            "I'm sorry, but I can only answer questions related to Constructor University Bremen. "
+            "Please ask me about campus locations, facilities, schedules, or university services."
+        )
+        return
 
     # Show thinking message for longer queries
     thinking_message: Optional[Message] = None

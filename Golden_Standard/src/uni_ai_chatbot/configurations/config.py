@@ -21,7 +21,9 @@ BOT_COMMANDS = [
     ("help", "Get help using the bot"),
     ("where", "Find a place on campus"),
     ("find", "Find places with specific features"),
-    ("handbook", "Get program handbooks")
+    ("handbook", "Get program handbooks"),
+    ("provider", "Change AI provider"),
+    ("providers", "List available AI providers")
 ]
 
 # LLM configuration
@@ -31,3 +33,33 @@ LLM_MAX_RETRIES = 2
 
 # Search configuration
 MAX_LOCATIONS_TO_DISPLAY = 13  # Maximum number of locations to display in search results
+
+# AI Provider configuration
+SUPPORTED_PROVIDERS = {
+    "mistral": {
+        "module": "langchain_mistralai",
+        "embeddings": "MistralAIEmbeddings",
+        "llm": "ChatMistralAI",
+        "default_model": "mistral-large-latest"
+    },
+    "openai": {
+        "module": "langchain_openai",
+        "embeddings": "OpenAIEmbeddings",
+        "llm": "ChatOpenAI",
+        "default_model": "gpt-4"
+    },
+    "anthropic": {
+        "module": "langchain_anthropic",
+        "embeddings": None,
+        "llm": "ChatAnthropic",
+        "default_model": "claude-3-opus-20240229"
+    },
+    "gemini": {
+        "module": "langchain_google_genai",
+        "embeddings": "GoogleGenerativeAIEmbeddings",
+        "llm": "ChatGoogleGenerativeAI",
+        "default_model": "gemini-1.0-pro"
+    }
+}
+DEFAULT_PROVIDER = "mistral"
+AI_PROVIDER = os.environ.get("AI_PROVIDER", DEFAULT_PROVIDER).lower()

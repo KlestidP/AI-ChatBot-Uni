@@ -216,7 +216,22 @@ class ServeryTool(Tool):
         from uni_ai_chatbot.services.servery_service import handle_servery_hours
         await handle_servery_hours(update, context, query)
 
-# Register the tool
+
+class NonUniversityTool(Tool):
+    """Tool for handling non-university related queries"""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="non_university",
+            description="Handles queries that are not related to Constructor University Bremen."
+        )
+
+    async def handle(self, update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> None:
+        """Handle non-university queries by politely refusing"""
+        await update.message.reply_text(
+            "I'm sorry, but I can only answer questions related to Constructor University Bremen. "
+            "Please ask me about campus locations, facilities, schedules, or university services."
+        )
 
 
 # Create global tool registry
@@ -229,3 +244,4 @@ tool_registry.register_tool(QATool())
 tool_registry.register_tool(FAQTool())
 tool_registry.register_tool(HandbookTool())
 tool_registry.register_tool(ServeryTool())
+tool_registry.register_tool(NonUniversityTool())
