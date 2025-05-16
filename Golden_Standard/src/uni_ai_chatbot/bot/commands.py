@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from uni_ai_chatbot.configurations.config import MISTRAL_API_KEY, DEFAULT_PROVIDER, SUPPORTED_PROVIDERS
+from uni_ai_chatbot.configurations.config import MISTRAL_API_KEY, DEFAULT_PROVIDER, SUPPORTED_PROVIDERS, AI_PROVIDER
 from uni_ai_chatbot.data.campus_map_data import find_location_by_name_or_alias, extract_location_name
 from uni_ai_chatbot.bot.location_handlers import show_location_details, handle_location_with_ai
 from uni_ai_chatbot.data.campus_map_data import extract_feature_keywords, find_locations_by_feature
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Send a message when the command /start is issued.
+    Enhanced start command with interactive onboarding experience.
 
     Args:
         update: Telegram Update object
@@ -26,10 +26,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user: User = update.effective_user
     message: Message = update.message
 
+    # Welcome message with personalized greeting
+    welcome_text = (
+        f"👋 *Welcome to Constructor University Bremen Bot, {user.first_name}!*\n\n"
+        f"I'm your AI assistant for navigating campus life. You can ask me questions in natural language - "
+        f"just type your question as you would ask a person!\n\n"
+        f"For example, try asking:\n"
+        f"• \"Where can I find a printer?\"\n"
+        f"• \"What are the locker hours for Krupp?\"\n"
+        f"• \"When is lunch served at Nordmetall?\"\n\n"
+        f"Or explore my capabilities using these example buttons:"
+    )
+
+    # Create keyboard with main categories
+    keyboard = [
+        [
+            InlineKeyboardButton("📍 Campus Locations", callback_data="onboard:locations"),
+            InlineKeyboardButton("🍽 Dining Hours", callback_data="onboard:dining"),
+        ],
+        [
+            InlineKeyboardButton("🧺 Locker Access", callback_data="onboard:lockers"),
+            InlineKeyboardButton("📚 Program Handbooks", callback_data="onboard:handbooks"),
+        ],
+        [
+            InlineKeyboardButton("❓ University FAQs", callback_data="onboard:faqs"),
+            InlineKeyboardButton("🔍 See All Features", callback_data="onboard:help"),
+        ]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
     await message.reply_text(
-        f"Hi {user.first_name}! 👋 I'm your University Info Bot for Constructor University Bremen. "
-        f"I can help you find places on campus, check meal times, access locker schedules, and more.\n\n"
-        f"Type /help to see all the things I can do for you!"
+        welcome_text,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
     )
 
 
