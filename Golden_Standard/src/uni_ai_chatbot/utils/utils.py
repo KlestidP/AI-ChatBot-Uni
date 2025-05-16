@@ -1,6 +1,7 @@
 import logging
 from typing import Optional, TypedDict
 from telegram import Update, Message, User
+from telegram.error import TelegramError
 
 logger = logging.getLogger(__name__)
 
@@ -14,29 +15,33 @@ class UserInfo(TypedDict):
     language_code: Optional[str]
 
 
+
 async def handle_error(update: Update, error: Optional[Exception] = None,
                        message: Optional[str] = None,
                        thinking_message: Optional[Message] = None) -> None:
-    """
-    Unified error handler for the bot.
-
-    Args:
-        update: Telegram Update object
-        error: Exception that occurred, if any
-        message: Custom error message to show user
-        thinking_message: "Thinking..." message to clean up, if any
-    """
+    """Enhanced error handler with graceful degradation"""
     if error:
-        logger.error(f"Error: {error}")
+        logger.error(f"Error: {type(error).__name__}: {error}")
 
+    # Clean up thinking message
     if thinking_message:
         try:
             await thinking_message.delete()
-        except Exception:
-            pass
+        except TelegramError:
+            pass  # Ignore if message already deleted
 
-    error_message: str = message or "Sorry, I couldn't process your question. Please try again."
-    await update.message.reply_text(error_message)
+    # Determine appropriate error message
+    if isinstance(error, TelegramError):
+        error_message = "I'm having trouble with Telegram right now. Please try again in a moment."
+    elif "timeout" in str(error).lower() or "timed out" in str(error).lower():
+        error_message = "That's taking longer than expected. Could you try a shorter question?"
+    else:
+        error_message = message or "Sorry, I couldn't process your question. Please try again."
+
+    try:
+        await update.message.reply_text(error_message)
+    except Exception as follow_up_error:
+        logger.error(f"Failed to send error message: {follow_up_error}")
 
 
 def get_user_info(update: Update) -> UserInfo:

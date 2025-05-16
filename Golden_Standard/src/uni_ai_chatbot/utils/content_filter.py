@@ -1,89 +1,184 @@
-import logging
 import re
-from typing import Tuple, Optional
+from typing import Tuple, List
+from uni_ai_chatbot.services.handbook_service import MAJOR_ABBREVIATIONS
 
-logger = logging.getLogger(__name__)
+# List of university-related keywords
+UNIVERSITY_KEYWORDS = [
+    # Campus locations
+    "campus", "college", "hall", "lab", "servery", "library", "office", "building", "lecture", "room",
+    "theater", "centre", "center", "circle", "commons", "lounge", "study", "space", "cafe", "bar",
 
-# List of university-related keywords to help identify relevant queries
-UNIVERSITY_KEYWORDS = {
-    'university', 'campus', 'college', 'class', 'course', 'professor', 'lecture', 'semester',
-    'student', 'study', 'library', 'exam', 'assignment', 'homework', 'schedule', 'degree',
-    'dormitory', 'dormitories', 'hall', 'locker', 'servery', 'dining', 'food', 'cafeteria',
-    'constructor', 'krupp', 'mercator', 'nordmetall', 'c3', 'bremen', 'advisor', 'academia',
-    'handbook', 'syllabus', 'printer', 'printing', 'coffee bar', 'basement', 'building',
-    'registration', 'enrollment', 'credit', 'major', 'minor', 'faculty', 'sport', 'club',
-    'event', 'scholarship', 'residence', 'permit', 'visa', 'document', 'certificate',
-    'tuition', 'fee', 'payment', 'lab', 'laboratory', 'workshop', 'seminar', 'academic',
-    'program', 'orientation', 'semester ticket', 'services', 'office', 'grade', 'housing',
-    'accommodation', 'where is', 'how to', 'when is', 'where can', 'who is', 'what is', 'can i',
-    'ify', 'irc', 'reimer', 'lükens', 'ocean lab', 'research', 'library', 'center', 'canteen',
-    'mensa', 'jacobs'  # Include legacy name Jacobs University
-}
+    # University services
+    "registration", "enrollment", "course", "class", "professor", "ta", "teacher", "degree", "program",
+    "major", "minor", "study", "research", "admission", "semester", "module", "credit", "grade",
+    "exam", "midterm", "final", "project", "assignment", "homework", "thesis", "dissertation",
+    "tuition", "fee", "scholarship", "financial aid", "dorm", "housing", "meal", "plan", "id",
+    "card", "email", "account", "laundry", "printer", "copy", "transportation", "bus", "shuttle",
 
-# Non-university topics to filter out
-NON_UNIVERSITY_TOPICS = [
-    # Politics
-    r'\b(politic|election|vote|president|party|democrat|republican|congress|parliament)\b',
+    # University organizations
+    "student", "faculty", "staff", "alumni", "club", "organization", "association", "union",
+    "committee", "board", "council", "group", "team", "department", "school", "college",
+    "administration", "president", "dean", "provost", "chair", "director", "professor",
 
-    # Entertainment
-    r'\b(movie|film|tv show|television|netflix|actor|actress|celebrity|hollywood)\b',
+    # University events
+    "orientation", "graduation", "commencement", "ceremony", "lecture", "seminar", "workshop",
+    "conference", "symposium", "fair", "festival", "concert", "performance", "game", "match",
+    "tournament", "competition", "championship", "award", "celebration", "reception", "party",
 
-    # Sports (non-university)
-    r'\b(nba|nfl|mlb|premier league|champions league|world cup|olympics|team)\b',
+    # University documents
+    "transcript", "diploma", "certificate", "letter", "recommendation", "application", "form",
+    "handbook", "syllabus", "curriculum", "schedule", "calendar", "map", "directory", "guideline",
+    "policy", "rule", "regulation", "requirement", "deadline", "date", "time", "hour",
 
-    # Technology (consumer)
-    r'\b(iphone|android|samsung|google|facebook|twitter|instagram|tiktok|snapchat)\b',
+    # Constructor University specific
+    "constructor", "jacobs", "nord", "metall", "college", "krupp", "mercator", "servery",
+    "c3", "east", "west", "north", "south", "hall", "library", "irc", "campus", "bremen",
+    "reimar", "lüst", "campusnet", "oceanlab", "res", "co", "rlc", "university",
 
-    # Finance/cryptocurrency
-    r'\b(stock market|bitcoin|ethereum|cryptocurrency|crypto|investment|forex|trading)\b',
+    # Administrative terms
+    "registrar", "bursar", "advisor", "counselor", "international", "residence", "permit",
+    "visa", "insurance", "health", "medical", "doctor", "nurse", "clinic", "hospital",
+    "emergency", "security", "safety", "police", "fire", "ambulance", "lost", "found",
 
-    # Violence/weapons
-    r'\b(gun|weapon|murder|bomb|terrorist|kill|attack)\b',
+    # Academic terms
+    "lecture", "tutorial", "lab", "seminar", "workshop", "course", "class", "professor",
+    "teacher", "instructor", "ta", "teaching", "assistant", "dean", "chair", "department",
+    "faculty", "staff", "student", "undergraduate", "graduate", "phd", "master", "bachelor",
+    "research", "paper", "publication", "journal", "conference", "grant", "funding",
 
-    # Adult content
-    r'\b(sex|porn|naked|nude|explicit|adult)\b',
+    # Educational terms
+    "assignment", "homework", "project", "report", "essay", "paper", "exam", "test", "quiz",
+    "midterm", "final", "grade", "gpa", "credit", "unit", "requirement", "elective", "core",
+    "mandatory", "optional", "prerequisite", "corequisite", "syllabus", "rubric", "evaluation",
 
-    # Drugs/alcohol (non-medical)
-    r'\b(weed|marijuana|cocaine|heroin|drug dealer|getting high|getting drunk)\b',
+    # Facilities
+    "housing", "dormitory", "dorm", "room", "apartment", "flat", "bathroom", "shower", "toilet",
+    "kitchen", "laundry", "washer", "dryer", "gym", "fitness", "sport", "field", "court",
+    "pool", "track", "park", "garden", "cafeteria", "dining", "restaurant", "food", "meal",
 
-    # Gaming/entertainment
-    r'\b(playstation|xbox|nintendo|gaming|game)\b',
+    # Technology
+    "wifi", "internet", "network", "email", "account", "password", "login", "computer", "laptop",
+    "printer", "scanner", "software", "hardware", "app", "website", "portal", "online", "digital",
+
+    # Transportation
+    "parking", "lot", "space", "permit", "car", "bike", "bicycle", "bus", "shuttle", "train",
+    "tram", "station", "stop", "airport", "ticket", "pass", "route", "schedule", "time",
+
+    # Financial
+    "tuition", "fee", "payment", "bill", "invoice", "refund", "scholarship", "grant", "loan",
+    "financial", "aid", "bursary", "stipend", "salary", "wage", "tax", "budget", "cost",
+
+    # Events
+    "orientation", "graduation", "commencement", "ceremony", "reception", "party", "celebration",
+    "festival", "concert", "performance", "show", "exhibition", "display", "presentation",
+    "lecture", "talk", "speech", "debate", "discussion", "forum", "panel", "roundtable",
+
+    # Student Life
+    "club", "organization", "society", "group", "team", "activity", "event", "social",
+    "cultural", "political", "religious", "spiritual", "volunteer", "service", "community",
+    "outreach", "leadership", "development", "career", "job", "internship", "coop", "placement",
+
+    # Administration
+    "policy", "procedure", "rule", "regulation", "guideline", "standard", "code", "conduct",
+    "discipline", "violation", "sanction", "penalty", "fine", "warning", "probation", "suspension",
+    "expulsion", "dismissal", "termination", "resignation", "retirement", "leave", "absence",
+
+    # Documents
+    "form", "application", "petition", "appeal", "request", "proposal", "nomination", "referendum",
+    "survey", "questionnaire", "evaluation", "assessment", "review", "audit", "inspection",
+    "investigation", "inquiry", "report", "record", "file", "folder", "document", "certificate",
+    "letter", "memo", "notice", "announcement", "bulletin", "newsletter", "brochure", "flyer",
+
+    # Time
+    "semester", "term", "quarter", "year", "session", "period", "duration", "deadline", "date",
+    "time", "schedule", "calendar", "appointment", "meeting", "consultation", "office hour",
+    "day", "week", "month", "weekend", "holiday", "break", "vacation", "recess", "spring",
+    "summer", "fall", "autumn", "winter", "morning", "afternoon", "evening", "night"
+]
+
+# List of university-specific locations
+UNIVERSITY_LOCATIONS = [
+    "campus", "library", "servery", "dining hall", "cafeteria", "dining", "restaurant", "food",
+    "college", "hall", "dormitory", "dorm", "apartment", "flat", "housing", "residence",
+    "classroom", "lecture", "theater", "studio", "lab", "laboratory", "workshop", "office",
+    "administration", "building", "center", "centre", "plaza", "square", "park", "garden",
+    "field", "court", "pool", "gym", "fitness", "recreation", "sport", "athletic", "stadium",
+    "auditorium", "theater", "theatre", "performance", "gallery", "museum", "exhibition",
+    "bookstore", "shop", "store", "market", "convenience", "pharmacy", "clinic", "health",
+    "medical", "hospital", "doctor", "nurse", "counselor", "advisor", "career", "job",
+    "parking", "lot", "garage", "transportation", "bus", "shuttle", "train", "station",
+    "stop", "terminal", "airport", "port", "dock", "locker", "bathroom", "restroom",
+    "shower", "toilet", "laundry", "washer", "dryer", "kitchen", "dining", "lounge",
+    "common", "area", "room", "space", "hall", "corridor", "elevator", "stair", "exit",
+    "entrance", "door", "window", "roof", "floor", "wall", "ceiling", "foundation", "basement"
 ]
 
 
-def is_university_related(query: str) -> Tuple[bool, Optional[str]]:
+def is_university_related(query: str) -> Tuple[bool, str]:
     """
-    Check if a query is university-related.
+    Check if a query is related to university topics.
 
     Args:
-        query: The text to check
+        query: User query string
 
     Returns:
-        Tuple containing:
-        - Boolean indicating if query is university-related
-        - Reason for rejection if not university-related, None otherwise
+        Tuple of (is_relevant, reason)
     """
-    # Convert to lowercase for easier matching
-    text = query.lower()
+    if not query:
+        return False, "Empty query"
 
-    # Check for obvious non-university topics first
-    for pattern in NON_UNIVERSITY_TOPICS:
-        if re.search(pattern, text):
-            matched = re.search(pattern, text).group(0)
-            return False, f"Query contains non-university topic: '{matched}'"
+    # Convert to lowercase for case-insensitive matching
+    query_lower = query.lower()
 
-    # Look for university keywords
+    # Check for programs and abbreviations
+    for abbr, full_name in MAJOR_ABBREVIATIONS.items():
+        if (f" {abbr} " in f" {query_lower} " or
+                query_lower.startswith(f"{abbr} ") or
+                query_lower.endswith(f" {abbr}") or
+                abbr == query_lower.strip()):
+            return True, f"Contains program abbreviation: {abbr}"
+
+        if full_name.lower() in query_lower:
+            return True, f"Contains program name: {full_name}"
+
+    # Check for university keywords
     for keyword in UNIVERSITY_KEYWORDS:
-        if keyword in text:
-            return True, None
+        if keyword.lower() in query_lower:
+            return True, f"Contains university keyword: {keyword}"
 
-    # Check for directional queries that might be university-related
-    if any(phrase in text for phrase in ['where is', 'how do i get to', 'how to find', 'direction to']):
-        return True, None
+    # Check for university locations
+    for location in UNIVERSITY_LOCATIONS:
+        if location.lower() in query_lower:
+            return True, f"Contains university location: {location}"
 
-    # Check for time-related queries that might be about university schedules
-    if any(phrase in text for phrase in ['when is', 'what time', 'hours', 'schedule']):
-        return True, None
+    # Educational question indicators
+    education_question_patterns = [
+        r"how (do|can|to) (i|we|you) (get|find|access|use|register|sign up|apply)",
+        r"where (is|are|can i find) .{3,}",
+        r"what (is|are) .{3,} (hour|time|schedule|deadline|requirement|policy|procedure)",
+        r"when (is|are|does|do) .{3,} (open|close|start|end|begin|finish|due|happen)",
+        r"who (is|are|do i) .{3,} (contact|talk to|ask|professor|teacher|instructor)",
+        r"do (i|we|you) need .{3,} (to|for)",
+        r"can (i|we|you) .{3,} (get|find|access|use|register|sign up|apply)"
+    ]
 
-    # If no university keywords found and not a clear directional or time query
-    return False, "Query doesn't appear to be related to university topics"
+    for pattern in education_question_patterns:
+        if re.search(pattern, query_lower):
+            return True, f"Contains educational question pattern"
+
+    # Check for academic terms
+    academic_terms = [
+        "grade", "course", "class", "exam", "test", "quiz", "homework", "assignment",
+        "project", "paper", "thesis", "dissertation", "research", "study", "graduation",
+        "degree", "major", "minor", "concentration", "specialization", "program",
+        "curriculum", "syllabus", "credit", "unit", "hour", "semester", "term", "quarter",
+        "year", "session", "lecture", "tutorial", "lab", "seminar", "workshop", "studio",
+        "practicum", "internship", "coop", "placement", "fieldwork", "clinical", "residency"
+    ]
+
+    for term in academic_terms:
+        if f" {term} " in f" {query_lower} " or query_lower.startswith(f"{term} ") or query_lower.endswith(f" {term}"):
+            return True, f"Contains academic term: {term}"
+
+    # Default to not related
+    return False, "No university-related keywords or patterns detected"

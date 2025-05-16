@@ -281,10 +281,15 @@ async def handle_handbook_with_ai(update: Update, context: ContextTypes.DEFAULT_
 
 async def handle_handbook_content_question(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> None:
     """
-    Handle questions about handbook content using the handbook QA chain
+    Handle questions about handbook content using the handbook QA chain with improved context
     """
     try:
-        # Get the handbook-specific QA chain
+        # Show a typing indicator while processing
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+        # First, try to identify which handbook(s) the query might be referring to
+        llm = context.bot_data.get("llm")
+        handbooks = context.bot_data.get("handbooks", [])
         handbook_qa_chain = context.bot_data.get("handbook_qa_chain")
 
         if not handbook_qa_chain:
@@ -297,14 +302,126 @@ async def handle_handbook_content_question(update: Update, context: ContextTypes
                 "I'm sorry, I don't have information about handbook content right now.")
             return
 
-        # Show a typing indicator while processing
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        # First check if the query contains any known major abbreviations
+        specific_major = None
+        query_lower = query.lower()
 
-        # Invoke the QA chain
-        response = handbook_qa_chain.invoke(query)
-        result = response['result']
+        # Look for abbreviations in the query
+        for abbr, full_major in MAJOR_ABBREVIATIONS.items():
+            # Check for abbreviation as standalone word with word boundaries
+            if (f" {abbr} " in f" {query_lower} " or
+                    query_lower.startswith(f"{abbr} ") or
+                    query_lower.endswith(f" {abbr}") or
+                    abbr == query_lower.strip()):
+                specific_major = full_major
+                logger.info(f"Found major abbreviation in query: {abbr} -> {full_major}")
+                break
+
+        # Also check for full program names
+        if not specific_major:
+            for handbook in handbooks:
+                if handbook["major"].lower() in query_lower:
+                    specific_major = handbook["major"]
+                    logger.info(f"Found full program name in query: {specific_major}")
+                    break
+
+        # If no abbreviation or program name found, try with LLM
+        if not specific_major and llm:
+            try:
+                available_majors = [handbook["major"] for handbook in handbooks]
+
+                # Include abbreviations info in the prompt
+                abbrev_list = [f"{abbr} = {full}" for abbr, full in MAJOR_ABBREVIATIONS.items()]
+                abbrev_info = "\n".join(abbrev_list[:20])  # Limit to first 20 to avoid too long prompts
+
+                major_prompt = f"""Extract the name of the study program/major mentioned in this query: "{query}"
+
+Available programs at the university include: {', '.join(available_majors)}
+
+Common program abbreviations include:
+{abbrev_info}
+
+If the query mentions a specific program or its abbreviation, respond with just the exact name of that program.
+If no program is mentioned or it's unclear, respond with "None".
+                """
+
+                response = llm.invoke(major_prompt)
+                extracted_major = response.content.strip()
+
+                if extracted_major.lower() != "none":
+                    specific_major = extracted_major
+                    logger.info(f"Extracted specific major from content query: {specific_major}")
+            except Exception as e:
+                logger.warning(f"Error extracting specific major: {e}")
+
+        # Enhance the query with the specific major if found
+        enhanced_query = query
+        if specific_major:
+            # Make a more natural integration of the program name
+            if "for" in query_lower or "in" in query_lower or "about" in query_lower:
+                # The query already has contextual language
+                enhanced_query = query.replace(specific_major, f"{specific_major} program")
+            else:
+                # Add context about which program
+                enhanced_query = f"In the {specific_major} program: {query}"
+
+            logger.info(f"Enhanced query: {enhanced_query}")
+
+        # Invoke the QA chain with the enhanced query
+        logger.info(f"Invoking handbook QA with query: {enhanced_query}")
+        response = handbook_qa_chain.invoke(enhanced_query)
+        result = response.get('result', '')
+
+        # Check if the result actually answers the question
+        low_confidence_indicators = [
+            "I don't have specific information",
+            "I don't know",
+            "I don't have information",
+            "doesn't provide details",
+            "not specified in",
+            "not mentioned in",
+            "no specific information",
+            "the handbook doesn't mention",
+            "not detailed in the handbook"
+        ]
+
+        is_low_confidence = any(indicator in result for indicator in low_confidence_indicators) or len(
+            result.strip()) < 100
+
+        # If the QA chain couldn't answer well and we know which program, try again with more context
+        if is_low_confidence and specific_major and llm:
+            try:
+                # Find relevant handbook
+                relevant_handbook = None
+                for handbook in handbooks:
+                    if handbook["major"].lower() == specific_major.lower():
+                        relevant_handbook = handbook
+                        break
+
+                if relevant_handbook:
+                    # Try to provide a more helpful general answer based on the program
+                    specific_prompt = f"""The user asked about the {specific_major} program with this question: "{query}"
+
+The handbook search did not find specific information to answer this question fully.
+
+Based on standard university degree structures and without making up specific details about Constructor University Bremen:
+1. What general information would be helpful about this topic in a {specific_major} program?
+2. What advice could you give the student about where to find more specific information?
+
+Provide a helpful, honest response that acknowledges the limits of available information while still being useful.
+Do NOT include your reasoning process or numbered points in your response.
+"""
+
+                    specific_response = llm.invoke(specific_prompt)
+                    result = specific_response.content.strip()
+
+                    # Add a note that this is general information
+                    result += f"\n\nFor the most accurate and up-to-date information specific to your program, please consult the complete {specific_major} handbook or contact your academic advisor."
+            except Exception as e:
+                logger.warning(f"Error generating specific program fallback: {e}")
 
         # Add source information if available
+        source_info = ""
         if 'source_documents' in response and response['source_documents']:
             sources = set()
             for doc in response['source_documents']:
@@ -312,19 +429,26 @@ async def handle_handbook_content_question(update: Update, context: ContextTypes
                     sources.add(doc.metadata['major'])
 
             if sources:
-                result += "\n\n*Sources:* " + ", ".join(sources)
+                source_info = "\n\n*Source handbooks:* " + ", ".join(sources)
 
-        await update.message.reply_text(result, parse_mode="Markdown")
+        # Add disclaimer if we couldn't find a specific source but know the program
+        if not source_info and specific_major:
+            source_info = f"\n\n*Note:* This information is about the {specific_major} program, based on general university guidelines."
+        elif not source_info:
+            source_info = ("\n\n*Note:* This is general information that may vary by program. Please consult your "
+                           "specific program handbook for details.")
+
+        # Send the final response with sources
+        await update.message.reply_text(result + source_info, parse_mode="Markdown")
 
     except Exception as e:
         logger.error(f"Error processing handbook content question: {e}")
         await update.message.reply_text(
             "I'm sorry, I couldn't process your question about handbook content. Please try again later.")
 
-
 async def handle_handbook_query(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str = None) -> None:
     """
-    Handle handbook-related queries with improved AI matching and pagination
+    Handle handbook-related queries with improved AI matching and content question detection
     Can be called from both initial messages and callback queries
     """
     # For callback queries, message will be None, so we need to handle this case
@@ -340,13 +464,8 @@ async def handle_handbook_query(update: Update, context: ContextTypes.DEFAULT_TY
         message_obj = update.message
 
         # Check if this is a content question rather than a request for a specific handbook
-        content_question_indicators = ["what", "how", "why", "explain", "tell me about", "describe",
-                                       "is there", "are there", "do i need", "requirements", "courses",
-                                       "prerequisites", "credits"]
-
-        is_content_question = "?" in text or any(indicator in text.lower() for indicator in content_question_indicators)
-
-        if is_content_question and not text.lower().startswith("/handbook"):
+        # Use the improved content question detection function
+        if is_content_question(text) and not text.lower().startswith("/handbook"):
             await handle_handbook_content_question(update, context, text)
             return
 
@@ -453,3 +572,49 @@ async def handle_handbook_query(update: Update, context: ContextTypes.DEFAULT_TY
             await update.callback_query.edit_message_text(error_message)
         else:
             await message_obj.reply_text(error_message)
+
+
+def is_content_question(text: str) -> bool:
+    """
+    Determine if query is asking about content within a handbook
+    rather than requesting the handbook itself
+    """
+    # Question indicators
+    question_words = ["what", "how", "why", "when", "where", "who", "which", "is", "are", "can", "do", "does"]
+    academic_terms = ["course", "credit", "requirement", "prerequisite", "module", "class",
+                      "thesis", "grade", "graduation", "degree", "major", "minor", "semester",
+                      "program", "study", "curriculum", "elective", "core", "mandatory"]
+
+    # Check for question mark
+    has_question_mark = "?" in text
+
+    # Check for question words
+    has_question_word = any(text.lower().startswith(word) or f" {word} " in f" {text.lower()} "
+                            for word in question_words)
+
+    # Check for academic terms that suggest content questions
+    has_academic_term = any(term in text.lower() for term in academic_terms)
+
+    # Check for explicit handbook content phrases
+    content_phrases = ["in the handbook", "from the handbook", "handbook say", "according to",
+                       "requirement", "tell me about", "find in", "find out", "look up"]
+    has_content_phrase = any(phrase in text.lower() for phrase in content_phrases)
+
+    # Check if explicitly requesting the handbook file
+    handbook_request_phrases = ["send me", "give me", "download", "get the handbook", "handbook for",
+                                "handbook of", "pdf", "file"]
+    is_handbook_request = any(phrase in text.lower() for phrase in handbook_request_phrases)
+
+    # Check for program abbreviations that might indicate a content question about a specific program
+    text_lower = text.lower()
+    has_program_abbr = any(f" {abbr} " in f" {text_lower} " or
+                           text_lower.startswith(f"{abbr} ") or
+                           text_lower.endswith(f" {abbr}")
+                           for abbr in MAJOR_ABBREVIATIONS.keys())
+
+    # Logic to determine if it's a content question
+    if is_handbook_request and not has_question_mark and not has_question_word:
+        return False  # Explicitly requesting the handbook itself
+
+    # If it has question syntax and (academic terms or content phrases or a program abbreviation), it's likely a content question
+    return (has_question_mark or has_question_word) and (has_academic_term or has_content_phrase or has_program_abbr)
