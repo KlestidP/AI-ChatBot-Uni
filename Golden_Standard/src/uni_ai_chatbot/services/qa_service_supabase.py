@@ -62,8 +62,24 @@ def initialize_qa_chain():
             api_key=MISTRAL_API_KEY
         )
 
-        # Create custom prompt
+        # Create custom prompts
         qa_prompt = get_qa_prompt_template()
+
+        # Create handbook-specific prompt
+        handbook_prompt_template = """You are a knowledgeable assistant that specializes in Constructor University program handbooks.
+        Use ONLY the following handbook content to answer the question. If the handbook doesn't contain the information, 
+        say so clearly, and suggest contacting an academic advisor.
+
+        HANDBOOK CONTENT:
+        {context}
+
+        QUESTION: {question}
+
+        Your answer should be detailed and precise, using the exact wording from the handbook when describing requirements.
+        Format your response clearly with proper headings and bullet points.
+        """
+
+        handbook_prompt = PromptTemplate.from_template(handbook_prompt_template)
 
         # Create retrievers for different document types
         general_retriever = vector_store.as_retriever(
@@ -82,17 +98,23 @@ def initialize_qa_chain():
             search_kwargs={"filter": {"metadata": {"tool": "qa"}}, "k": 4}
         )
 
+        # Enhanced handbook retriever with improved settings
         handbook_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {"metadata": {"tool": "handbook"}}, "k": 6}
+            # Use standard similarity search instead of MMR
+            search_kwargs={
+                "filter": {"metadata": {"tool": "handbook"}},
+                "k": 10  # Retrieve more documents
+            }
         )
 
-        # Create QA chains with the custom prompt
-        def create_chain(retriever):
+        # Create QA chains with custom prompts
+        def create_chain(retriever, custom_prompt=None):
             return RetrievalQA.from_chain_type(
                 llm=llm,
                 retriever=retriever,
                 return_source_documents=True,
-                chain_type_kwargs={"prompt": qa_prompt}
+                chain_type="stuff",
+                chain_type_kwargs={"prompt": custom_prompt or qa_prompt}
             )
 
         # Create specialized QA chains
@@ -100,7 +122,13 @@ def initialize_qa_chain():
         location_qa_chain = create_chain(location_retriever)
         locker_qa_chain = create_chain(locker_retriever)
         faq_qa_chain = create_chain(faq_retriever)
-        handbook_qa_chain = create_chain(handbook_retriever)
+        handbook_qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            retriever=handbook_retriever,
+            return_source_documents=True,
+            chain_type="stuff",
+            chain_type_kwargs={"prompt": handbook_prompt}
+        )
 
         return (vector_store, llm, general_qa_chain, location_qa_chain,
                 locker_qa_chain, faq_qa_chain, handbook_qa_chain)
@@ -108,7 +136,6 @@ def initialize_qa_chain():
     except Exception as e:
         logger.error(f"Error initializing QA chain: {e}")
         raise
-
 
 def get_scoped_qa_chain(vector_store: SupabaseVectorStore, llm: ChatMistralAI, tool_type: str) -> RetrievalQA:
     """

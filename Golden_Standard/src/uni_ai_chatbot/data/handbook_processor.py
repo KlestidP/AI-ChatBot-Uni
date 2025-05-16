@@ -35,14 +35,7 @@ class CourseInfo:
 
 def process_handbooks(max_chunk_size=500) -> List[Document]:
     """
-    Process handbook PDFs into document chunks suitable for embedding
-    with enhanced structure recognition and metadata
-
-    Args:
-        max_chunk_size: Maximum size in characters for each chunk
-
-    Returns:
-        List of document objects
+    Process handbook PDFs into document chunks with preserved structure
     """
     documents = []
 
@@ -63,251 +56,169 @@ def process_handbooks(max_chunk_size=500) -> List[Document]:
                     continue
 
                 pdf_content = response.content
-
-                # Process PDF text
                 pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_content))
 
-                # First, extract the full text to analyze structure
-                handbook_text = extract_clean_text(pdf_reader)
+                # Extract text with structure preservation
+                structured_content = extract_structured_content(pdf_reader)
 
-                # Identify curriculum structure and course requirements
-                curriculum_sections = identify_curriculum_sections(handbook_text)
-                course_requirements = extract_course_requirements(handbook_text)
+                # Create document chunks for each section
+                for section in structured_content:
+                    section_title = section['title']
+                    section_content = section['content']
+                    section_level = section['level']
+                    section_number = section.get('number', '')
 
-                # Create specific documents for curriculum and requirements
-                if curriculum_sections:
-                    for section_name, section_text in curriculum_sections.items():
+                    # Create chunks that include section title as context
+                    chunks = create_contextual_chunks(section_content, section_title, max_chunk_size)
+
+                    for i, chunk in enumerate(chunks):
                         documents.append(Document(
-                            page_content=section_text,
+                            page_content=chunk,
                             metadata={
-                                "type": "handbook_curriculum",
+                                "type": "handbook_section",
                                 "major": handbook['major'],
                                 "file_name": handbook['file_name'],
-                                "section": section_name,
+                                "section_title": section_title,
+                                "section_number": section_number,
+                                "section_level": section_level,
+                                "chunk_id": i,
+                                "total_chunks": len(chunks),
                                 "tool": "handbook"
                             }
                         ))
 
-                # Add structured course requirement information
-                if course_requirements:
-                    for year, year_courses in course_requirements.items():
-                        content = f"Required courses for {year} in {handbook['major']}:\n\n"
-                        content += "\n".join([f"- {course}" for course in year_courses])
-
-                        documents.append(Document(
-                            page_content=content,
-                            metadata={
-                                "type": "handbook_courses",
-                                "major": handbook['major'],
-                                "year": year,
-                                "mandatory": True,
-                                "tool": "handbook"
-                            }
-                        ))
-
-                # Also create standard chunks for general information
-                chunks = chunk_text(handbook_text, max_chunk_size)
-                for i, chunk in enumerate(chunks):
-                    if len(chunk) < 50:  # Skip very small chunks
-                        continue
-
-                    documents.append(Document(
-                        page_content=chunk,
-                        metadata={
-                            "type": "handbook_general",
-                            "major": handbook['major'],
-                            "file_name": handbook['file_name'],
-                            "chunk_id": i,
-                            "tool": "handbook"
-                        }
-                    ))
-
-                logger.info(
-                    f"Processed {handbook['file_name']} into {len(chunks)} general chunks plus specialized sections")
+                logger.info(f"Processed {handbook['file_name']} into {len(documents)} structured chunks")
 
             except Exception as e:
-                logger.error(f"Error processing {handbook['file_name']}: {e}")
+                logger.error(f"Error processing {handbook['file_name']}: {e}", exc_info=True)
 
     except Exception as e:
-        logger.error(f"Error in handbook processing: {e}")
+        logger.error(f"Error in handbook processing: {e}", exc_info=True)
 
     return documents
 
 
-def identify_curriculum_sections(text: str) -> Dict[str, str]:
+def extract_structured_content(pdf_reader) -> List[Dict[str, Any]]:
     """
-    Identify and extract curriculum-related sections from handbook text
-
-    Args:
-        text: Full handbook text
-
-    Returns:
-        Dictionary of section name to section text
+    Extract structured content from PDF with section headers
     """
-    sections = {}
+    sections = []
+    current_section = {"title": "Overview", "level": 0, "content": "", "number": ""}
 
-    # Common section headers for curriculum/required courses
-    curriculum_headers = [
-        r"(?:Curriculum|Study|Examination) (?:Plan|Structure)",
-        r"(?:Required|Mandatory|Core) (?:Courses|Modules)",
-        r"(?:Year|Semester) \d+[^\n]+(?:Courses|Modules)",
-        r"CHOICE Modules?",
-        r"CORE Modules?",
-        r"CAREER Modules?"
-    ]
-
-    # Try to find these sections
-    current_section = None
-    current_text = []
-
-    for line in text.split('\n'):
-        # Check if this line might be a curriculum header
-        is_header = False
-        for pattern in curriculum_headers:
-            if re.search(pattern, line, re.IGNORECASE):
-                # If we were collecting a section, save it
-                if current_section:
-                    sections[current_section] = '\n'.join(current_text)
-
-                # Start a new section
-                current_section = line.strip()
-                current_text = [line]
-                is_header = True
-                break
-
-        # If not a header and we're collecting a section, add to current text
-        if not is_header and current_section:
-            current_text.append(line)
-
-    # Save the last section if any
-    if current_section:
-        sections[current_section] = '\n'.join(current_text)
-
-    return sections
-
-
-def extract_course_requirements(text: str) -> Dict[str, List[str]]:
-    """
-    Extract mandatory course requirements organized by year
-
-    Args:
-        text: Full handbook text
-
-    Returns:
-        Dictionary mapping year to list of required courses
-    """
-    requirements = {
-        "First Year": [],
-        "Second Year": [],
-        "Third Year": [],
-        "CHOICE Year": [],
-        "CORE Year": [],
-        "CAREER Year": []
-    }
-
-    # Look for course lists near relevant headers
-    year_patterns = {
-        "First Year": [r"First Year", r"Year 1", r"CHOICE"],
-        "Second Year": [r"Second Year", r"Year 2", r"CORE"],
-        "Third Year": [r"Third Year", r"Year 3", r"CAREER"],
-        "CHOICE Year": [r"CHOICE Modules?", r"CHOICE Year"],
-        "CORE Year": [r"CORE Modules?", r"CORE Year"],
-        "CAREER Year": [r"CAREER Modules?", r"CAREER Year"]
-    }
-
-    # Patterns for mandatory course indicators
-    mandatory_indicators = [
-        r"[Mm]andatory",
-        r"[Rr]equired",
-        r"[Cc]ore",
-        r"\(m,",
-        r"\bm\s",
-    ]
-
-    # Course pattern: typically has a code or title followed by credits
-    course_pattern = r"(?:[A-Z]{2,4}[-\s]?\d{3,4}[-\s]?[A-Z]?|[A-Z][a-z]+(?:\s[A-Z][a-z]+){1,5})(?:.*?(\d+(?:\.\d+)?\s*(?:CP|ECTS|Credit)s?))?)"
-
-    # For each year pattern, try to find associated courses
-    for year, patterns in year_patterns.items():
-        for pattern in patterns:
-            # Find sections that match this year pattern
-            matches = re.finditer(pattern, text, re.IGNORECASE)
-            for match in matches:
-                # Extract a chunk of text following this header
-                start_pos = match.end()
-                chunk_end = min(start_pos + 2000, len(text))  # Look at next 2000 chars
-                chunk = text[start_pos:chunk_end]
-
-                # Look for courses in this chunk
-                lines = chunk.split('\n')
-                for line in lines:
-                    # Check if line indicates a mandatory course
-                    is_mandatory = any(re.search(indicator, line) for indicator in mandatory_indicators)
-
-                    if is_mandatory:
-                        # Try to extract course info
-                        course_match = re.search(course_pattern, line)
-                        if course_match:
-                            course = course_match.group(0).strip()
-                            if course and course not in requirements[year]:
-                                requirements[year].append(course)
-
-    return requirements
-
-
-def extract_clean_text(pdf_reader):
-    """Extract and clean text from PDF with better formatting preservation"""
-    text = ""
+    # Extract full text first
+    full_text = ""
     for page_num in range(len(pdf_reader.pages)):
         try:
             page_text = pdf_reader.pages[page_num].extract_text()
             if page_text:
-                text += page_text + "\n\n"  # Add double newline to better separate pages
+                full_text += page_text + "\n\n"
         except Exception as e:
             logger.warning(f"Error extracting text from page {page_num}: {e}")
 
-    # Clean up text but preserve paragraph structure
-    import re
-    # Replace multiple newlines with double newline (preserve paragraphs)
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    # Replace sequences of spaces with single space
-    text = re.sub(r' {2,}', ' ', text)
-    # Remove null bytes that might cause issues
-    text = text.replace('\0', '')
+    # Define patterns for section headers
+    section_patterns = [
+        # Match patterns like "1 Program Overview" or "1.1 Concept"
+        r'\n(\d+(?:\.\d+)*)\s+([A-Z][A-Za-z\s\-]+)',
+        # Match capitalized section headers
+        r'\n([A-Z][A-Z\s]+(?:[A-Za-z\s\-]+))',
+        # Match module headers
+        r'\n(\d+\.\d+)\s+([A-Z][A-Za-z\s\&\-]+)'
+    ]
 
-    return text
-
-
-def chunk_text(text, chunk_size=500, overlap=50):
-    """Split text into smaller chunks with overlap"""
-    chunks = []
-
-    # First try to split by double newlines (paragraphs)
-    paragraphs = text.split('\n\n')
-    current_chunk = ""
-
-    for para in paragraphs:
-        # If adding this paragraph would exceed chunk size, save current chunk and start a new one
-        if len(current_chunk) + len(para) > chunk_size:
-            if current_chunk:
-                chunks.append(current_chunk)
-
-            # If paragraph is larger than chunk size, split it further
-            if len(para) > chunk_size:
-                # Add paragraph chunks with overlap
-                for i in range(0, len(para), chunk_size - overlap):
-                    chunks.append(para[i:i + chunk_size])
+    # Find section boundaries
+    all_matches = []
+    for pattern in section_patterns:
+        for match in re.finditer(pattern, full_text):
+            # Determine if this is a section number + title or just title
+            if len(match.groups()) == 2:
+                number, title = match.groups()
+                level = number.count('.') + 1
             else:
-                current_chunk = para
+                number = ""
+                title = match.group(1)
+                level = 1 if title.isupper() else 2
+
+            all_matches.append({
+                "position": match.start(),
+                "title": title.strip(),
+                "number": number,
+                "level": level
+            })
+
+    # Sort matches by position in text
+    all_matches.sort(key=lambda m: m["position"])
+
+    # Create sections based on matches
+    for i, match in enumerate(all_matches):
+        # Determine section end
+        if i < len(all_matches) - 1:
+            section_text = full_text[match["position"]:all_matches[i + 1]["position"]]
         else:
-            # Add paragraph to current chunk
-            if current_chunk:
-                current_chunk += "\n\n" + para
-            else:
-                current_chunk = para
+            section_text = full_text[match["position"]:]
 
-    # Add the last chunk if it's not empty
-    if current_chunk:
-        chunks.append(current_chunk)
+        sections.append({
+            "title": match["title"],
+            "number": match["number"],
+            "level": match["level"],
+            "content": section_text.strip()
+        })
+
+    # Handle case with no detected sections
+    if not sections:
+        sections.append({
+            "title": "Handbook Content",
+            "number": "",
+            "level": 0,
+            "content": full_text.strip()
+        })
+
+    return sections
+
+
+def create_contextual_chunks(text: str, section_title: str, max_size: int) -> List[str]:
+    """
+    Create chunks with section context preserved
+    """
+    # Add section header to text
+    section_header = f"SECTION: {section_title}\n\n"
+
+    # Split text by paragraphs
+    paragraphs = re.split(r'\n\s*\n', text)
+
+    chunks = []
+    current_chunk = section_header
+
+    for paragraph in paragraphs:
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+
+        # Check if adding this paragraph would exceed max size
+        if len(current_chunk) + len(paragraph) + 2 <= max_size:
+            current_chunk += paragraph + "\n\n"
+        else:
+            # Save current chunk and start a new one
+            if current_chunk != section_header:
+                chunks.append(current_chunk.strip())
+
+            # If paragraph itself is too long, split it further
+            if len(paragraph) > max_size - len(section_header):
+                # Split long paragraph by sentences
+                sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+                current_chunk = section_header
+
+                for sentence in sentences:
+                    if len(current_chunk) + len(sentence) + 2 <= max_size:
+                        current_chunk += sentence + " "
+                    else:
+                        if current_chunk != section_header:
+                            chunks.append(current_chunk.strip())
+                        current_chunk = section_header + sentence + " "
+            else:
+                current_chunk = section_header + paragraph + "\n\n"
+
+    # Add final chunk
+    if current_chunk != section_header:
+        chunks.append(current_chunk.strip())
 
     return chunks

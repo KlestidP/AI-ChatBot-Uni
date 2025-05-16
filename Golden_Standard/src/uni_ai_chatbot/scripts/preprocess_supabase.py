@@ -227,15 +227,107 @@ def delete_all_documents(supabase_client):
         raise Exception(f"Failed to drop documents table: {str(e)}")
 
 
+def update_handbook_embeddings():
+    """Updates only the handbook documents in the vector store with improved structure preservation"""
+    try:
+        logger.info("Creating embeddings...")
+        embeddings = MistralAIEmbeddings(api_key=MISTRAL_API_KEY)
+
+        logger.info("Creating Supabase client...")
+        supabase_client = get_supabase_client()
+
+        # Delete existing handbook documents first
+        logger.info("Deleting existing handbook documents...")
+        try:
+            # Use RPC to delete documents with tool=handbook metadata
+            delete_query = "DELETE FROM documents WHERE metadata->>'tool' = 'handbook';"
+            supabase_client.rpc('execute_sql', {'sql': delete_query}).execute()
+            logger.info("Successfully deleted existing handbook documents")
+        except Exception as e:
+            logger.error(f"Error deleting existing handbook documents: {e}")
+            logger.info("Trying alternative deletion method...")
+            # Try to delete documents one by one if bulk deletion fails
+            try:
+                result = supabase_client.table("documents").select("id").eq("metadata->>tool", "handbook").execute()
+                if hasattr(result, 'data') and result.data:
+                    for doc in result.data:
+                        supabase_client.table("documents").delete().eq("id", doc['id']).execute()
+                logger.info(f"Deleted {len(result.data) if hasattr(result, 'data') else 0} handbook documents")
+            except Exception as e2:
+                logger.error(f"Failed to delete documents: {e2}")
+                user_input = input("Continue anyway? (y/n): ")
+                if user_input.lower() != 'y':
+                    return
+
+        # Process handbooks with improved structure preservation
+        logger.info("Processing handbooks with improved structure...")
+        handbook_documents = process_handbooks(max_chunk_size=500)
+        logger.info(f"Generated {len(handbook_documents)} handbook document chunks")
+
+        # Process in batches to avoid API limitations
+        batch_size = 50  # Process 50 documents at a time
+        total_docs = len(handbook_documents)
+
+        logger.info(f"Adding {total_docs} handbook documents to vector store in batches of {batch_size}...")
+
+        for i in range(0, total_docs, batch_size):
+            batch_end = min(i + batch_size, total_docs)
+            current_batch = handbook_documents[i:batch_end]
+
+            try:
+                logger.info(
+                    f"Processing batch {i // batch_size + 1}/{(total_docs + batch_size - 1) // batch_size}: documents {i} to {batch_end - 1}")
+
+                # Create embeddings for this batch
+                batch_texts = [doc.page_content for doc in current_batch]
+                batch_metadatas = [doc.metadata for doc in current_batch]
+
+                # Add these documents to the vector store
+                FixedSupabaseVectorStore.from_texts(
+                    texts=batch_texts,
+                    embedding=embeddings,
+                    metadatas=batch_metadatas,
+                    client=supabase_client,
+                    table_name="documents",
+                    query_name="match_documents"
+                )
+
+                logger.info(f"Successfully added batch {i // batch_size + 1}")
+
+            except Exception as e:
+                logger.error(f"Error processing batch {i // batch_size + 1}: {e}")
+                # Continue with the next batch instead of failing everything
+
+        logger.info("Handbook embeddings updated successfully in Supabase")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error updating handbook embeddings: {e}")
+        return False
+
+
 if __name__ == "__main__":
     try:
+        # Parse command line arguments
+        import argparse
+
+        parser = argparse.ArgumentParser(description="Process and save embeddings to Supabase")
+        parser.add_argument("--handbooks-only", action="store_true", help="Update only handbook embeddings")
+        args = parser.parse_args()
+
         # First check if setup was done
         from uni_ai_chatbot.scripts.setup_pgvector import setup_pgvector
 
         setup_pgvector()
 
-        # Then process and save documents
-        vector_store = process_and_save_to_supabase()
+        if args.handbooks_only:
+            # Only update handbook embeddings
+            print("Updating only handbook embeddings...")
+            update_handbook_embeddings()
+        else:
+            # Process and save all documents
+            vector_store = process_and_save_to_supabase()
+
         print("Successfully created and saved embeddings to Supabase")
     except Exception as e:
         logger.error(f"Error preprocessing documents: {e}")

@@ -91,7 +91,7 @@ class ToolClassifier:
 
     def _rule_based_classification(self, query: str) -> str:
         """
-        Classify query using simple rule-based approach
+        Classify query using simple rule-based approach with improved handbook detection
 
         Args:
             query: The user query
@@ -100,6 +100,36 @@ class ToolClassifier:
             The classified tool name
         """
         query_lower = query.lower()
+
+        # Enhanced handbook detection
+        handbook_terms = [
+            "handbook", "program", "major", "degree", "curriculum", "syllabus",
+            "course requirement", "graduation requirement", "credit", "ects",
+            "computer science program", "cs program", "bachelor thesis",
+            "module", "examination", "study plan", "schematic", "mandatory",
+            "elective", "core module", "choice module", "career module",
+            "specialization", "internship", "constructor track",
+            "curricular structure", "qualification aims"
+        ]
+
+        # Check for presence of handbook terms
+        if any(term in query_lower for term in handbook_terms):
+            return "handbook"
+
+        # Check for specific program names or abbreviations
+        program_terms = [
+            "computer science", "cs", "robotics", "ris", "intelligent systems",
+            "electrical engineering", "ece", "physics", "mathematics", "chemistry",
+            "biology", "biochemistry", "earth science", "industrial engineering",
+            "global economics", "business administration", "international business",
+            "social psychology", "cognitive psychology"
+        ]
+
+        program_related_terms = ["program", "major", "study", "graduate", "requirement", "module"]
+
+        if any(term in query_lower for term in program_terms) and any(
+                term in query_lower for term in program_related_terms):
+            return "handbook"
 
         # Basic location detection
         location_terms = ["where", "find", "location", "where is", "how do i get to"]
@@ -111,16 +141,12 @@ class ToolClassifier:
         if any(term in query_lower for term in locker_terms):
             return "locker"
 
+        # Servery detection
         servery_terms = ["servery", "food", "meal", "eat", "dining", "breakfast", "lunch", "dinner", "coffee bar",
                          "menu", "cafeteria"]
         time_terms = ["hours", "time", "open", "when", "schedule"]
         if any(term in query_lower for term in servery_terms) and any(term in query_lower for term in time_terms):
             return "servery"
-
-        # Handbook detection (add this new section)
-        handbook_terms = ["handbook", "program", "major", "degree", "curriculum", "syllabus"]
-        if any(term in query_lower for term in handbook_terms):
-            return "handbook"
 
         # FAQ detection
         faq_terms = ["how do i", "how to", "what is the", "can i", "when is"]
