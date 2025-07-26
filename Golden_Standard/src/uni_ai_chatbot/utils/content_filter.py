@@ -15,6 +15,12 @@ UNIVERSITY_KEYWORDS = [
     "tuition", "fee", "scholarship", "financial aid", "dorm", "housing", "meal", "plan", "id",
     "card", "email", "account", "laundry", "printer", "copy", "transportation", "bus", "shuttle",
 
+    # Course and prerequisite terms (ADDED)
+    "prerequisite", "prerequisites", "pre-requisite", "pre-requisites", "corequisite", "co-requisite",
+    "requirement", "requirements", "required", "mandatory", "optional", "elective", "core",
+    "foundation", "advanced", "introductory", "intermediate", "specialization", "pre requisite", "pre requisites",
+    "co requisite", "co requisites", "corequisites", "co-requisites"
+
     # University organizations
     "student", "faculty", "staff", "alumni", "club", "organization", "association", "union",
     "committee", "board", "council", "group", "team", "department", "school", "college",
@@ -130,6 +136,86 @@ def is_university_related(query: str) -> Tuple[bool, str]:
     # Convert to lowercase for case-insensitive matching
     query_lower = query.lower()
 
+    # PRIORITY CHECK: Teaching/Professor queries are ALWAYS university-related
+    teaching_patterns = [
+        r"who (teaches|is teaching|taught)",
+        r"who (is|are) the (professor|instructor|teacher)",
+        r"professor for",
+        r"instructor for",
+        r"teacher for",
+        r"taught by",
+        r"teaching assistant",
+        r"when is .* taught",
+        r"who gives",
+        r"who offers"
+    ]
+
+    for pattern in teaching_patterns:
+        if re.search(pattern, query_lower):
+            return True, "Contains teaching/professor query pattern"
+
+    # SPECIAL CASE: Academic queries about potential courses
+    # These words indicate the query is about academic matters
+    academic_context_words = [
+        "prerequisite", "pre-requisite", "requirement", "required",
+        "course", "class", "module", "program", "credit", "ects",
+        "professor", "instructor", "exam", "assignment", "syllabus",
+        "teaches", "teaching", "taught", "lecture", "tutorial",
+        "enrollment", "enroll", "register", "registration",
+        "grade", "grading", "assessment", "evaluation",
+        "homework", "project", "thesis", "dissertation"
+    ]
+
+    # Common course/subject names that might appear in queries
+    # Extended list to be more inclusive
+    potential_course_names = [
+        # Computer Science courses
+        "operating systems", "database", "databases", "algorithms", "data structures",
+        "networks", "networking", "programming", "software", "hardware",
+        "compiler", "compilers", "architecture", "security", "cryptography",
+        "machine learning", "artificial intelligence", "ai", "ml", "robotics",
+        "web development", "mobile development", "cloud computing",
+        "distributed systems", "parallel computing", "computer graphics",
+        "human computer interaction", "hci", "software engineering",
+
+        # Math courses
+        "mathematics", "calculus", "algebra", "statistics", "probability",
+        "discrete math", "linear algebra", "differential equations",
+        "numerical methods", "optimization", "geometry",
+
+        # Science courses
+        "physics", "chemistry", "biology", "biochemistry", "biophysics",
+        "mechanics", "thermodynamics", "electromagnetics", "quantum",
+        "organic chemistry", "inorganic chemistry", "analytical chemistry",
+
+        # Engineering courses
+        "engineering", "circuits", "electronics", "signals", "systems",
+        "control systems", "power systems", "communications",
+        "materials", "statics", "dynamics", "fluids",
+
+        # Business/Social Science courses
+        "economics", "microeconomics", "macroeconomics", "finance",
+        "accounting", "marketing", "management", "psychology",
+        "sociology", "anthropology", "political science",
+
+        # Other academic subjects
+        "english", "writing", "literature", "history", "philosophy",
+        "ethics", "languages", "german", "spanish", "french"
+    ]
+
+    # If query contains academic context word, it's likely university-related
+    has_academic_context = any(word in query_lower for word in academic_context_words)
+
+    # Check if query mentions something that could be a course
+    mentions_potential_course = any(course in query_lower for course in potential_course_names)
+
+    # If it has academic context OR mentions a potential course with a question word, accept it
+    question_words = ["who", "what", "when", "where", "how", "why", "which", "can", "do", "does", "is", "are"]
+    starts_with_question = any(query_lower.startswith(word) for word in question_words)
+
+    if has_academic_context or (mentions_potential_course and starts_with_question):
+        return True, "Contains academic context or course-related question"
+
     # Check for programs and abbreviations
     for abbr, full_name in MAJOR_ABBREVIATIONS.items():
         if (f" {abbr} " in f" {query_lower} " or
@@ -151,15 +237,27 @@ def is_university_related(query: str) -> Tuple[bool, str]:
         if location.lower() in query_lower:
             return True, f"Contains university location: {location}"
 
-    # Educational question indicators
+    # Educational question indicators - MORE PATTERNS
     education_question_patterns = [
         r"how (do|can|to) (i|we|you) (get|find|access|use|register|sign up|apply)",
         r"where (is|are|can i find) .{3,}",
         r"what (is|are) .{3,} (hour|time|schedule|deadline|requirement|policy|procedure)",
-        r"when (is|are|does|do) .{3,} (open|close|start|end|begin|finish|due|happen)",
-        r"who (is|are|do i) .{3,} (contact|talk to|ask|professor|teacher|instructor)",
+        r"when (is|are|does|do) .{3,} (open|close|start|end|begin|finish|due|happen|taught|offered)",
+        r"who (is|are|do i) .{3,} (contact|talk to|ask|professor|teacher|instructor|teaches|teaching)",
         r"do (i|we|you) need .{3,} (to|for)",
-        r"can (i|we|you) .{3,} (get|find|access|use|register|sign up|apply)"
+        r"can (i|we|you) .{3,} (get|find|access|use|register|sign up|apply|take|enroll)",
+        # Specific patterns for prerequisites and requirements
+        r"what.*(prerequisite|pre-requisite|requirement).*for",
+        r"prerequisite.*for",
+        r"requirement.*for",
+        r"do i need.*before",
+        r"what.*need.*before",
+        r"required.*for",
+        # Teaching-related patterns
+        r"who.*teach",
+        r"taught by",
+        r"professor.*for",
+        r"instructor.*for"
     ]
 
     for pattern in education_question_patterns:
@@ -173,12 +271,19 @@ def is_university_related(query: str) -> Tuple[bool, str]:
         "degree", "major", "minor", "concentration", "specialization", "program",
         "curriculum", "syllabus", "credit", "unit", "hour", "semester", "term", "quarter",
         "year", "session", "lecture", "tutorial", "lab", "seminar", "workshop", "studio",
-        "practicum", "internship", "coop", "placement", "fieldwork", "clinical", "residency"
+        "practicum", "internship", "coop", "placement", "fieldwork", "clinical", "residency",
+        "prerequisite", "prerequisites", "pre-requisite", "pre-requisites",
+        "corequisite", "co-requisite", "requirement", "requirements",
+        "professor", "instructor", "teacher", "lecturer", "teaching"
     ]
 
     for term in academic_terms:
         if f" {term} " in f" {query_lower} " or query_lower.startswith(f"{term} ") or query_lower.endswith(f" {term}"):
             return True, f"Contains academic term: {term}"
+
+    # Final catch-all: If query is asking about ANYTHING being taught/offered/given
+    if re.search(r"(taught|offered|given|teaches|teaching|professor|instructor)", query_lower):
+        return True, "Contains teaching-related terms"
 
     # Default to not related
     return False, "No university-related keywords or patterns detected"

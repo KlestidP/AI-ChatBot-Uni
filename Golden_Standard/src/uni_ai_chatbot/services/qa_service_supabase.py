@@ -34,8 +34,8 @@ class FilteredRetriever(BaseRetriever):
         run_manager: CallbackManagerForRetrieverRun = None
     ) -> List[Document]:
         """Retrieve documents and filter by metadata"""
-        # Get more documents than needed (k * 3)
-        all_docs = self.base_retriever.get_relevant_documents(query)
+        # Get more documents than needed (k * 3) using invoke method
+        all_docs = self.base_retriever.invoke(query)
         
         # Filter documents based on metadata
         filtered_docs = []
@@ -104,27 +104,32 @@ def initialize_qa_chain():
         # Create custom prompts
         qa_prompt = get_qa_prompt_template()
 
-        # Create handbook-specific prompt
+        # Create a handbook-specific prompt
         handbook_prompt_template = """You are a knowledgeable assistant that specializes in Constructor University program handbooks.
-        
-        Use the following handbook content to answer the question. Be thorough and specific in your response.
-        
-        IMPORTANT: If the provided context doesn't contain enough information to fully answer the question, 
-        say what you can based on the available information and mention what specific information is missing.
 
-        Context from handbooks:
-        {context}
+                Use the following handbook content to answer the question. Be thorough and specific in your response.
 
-        Question: {question}
+                IMPORTANT: 
+                - If the provided context doesn't contain enough information to fully answer the question, say what you can based on the available information and mention what specific information is missing.
+                - For simple factual questions (like names, dates, or single facts), provide a clear, direct answer.
+                - For complex questions requiring explanation, use structured formatting with headings and bullet points.
 
-        Provide a detailed answer using the handbook information. Include:
-        - Specific requirements or criteria mentioned
-        - Credit hours or ECTS if mentioned
-        - Any important policies or procedures
-        - Relevant deadlines or timelines
-        
-        Format your response clearly with bullet points where appropriate.
-        """
+                Context from handbooks:
+                {context}
+
+                Question: {question}
+
+                Guidelines for your response:
+                - For simple questions: Provide a direct, concise answer with relevant details (e.g., course codes, titles)
+                - For complex questions: Include the following where applicable:
+                  • Specific requirements or criteria mentioned
+                  • Credit hours or ECTS if mentioned
+                  • Any important policies or procedures
+                  • Relevant deadlines or timelines
+                  • Professor names and contact info if asked
+
+                Always format your response appropriately for the question's complexity.
+                """
 
         handbook_prompt = PromptTemplate.from_template(handbook_prompt_template)
 

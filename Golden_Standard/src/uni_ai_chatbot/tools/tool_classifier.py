@@ -115,6 +115,27 @@ class ToolClassifier:
             "what are the requirements", "how many credits", "how many modules"
         ]
 
+        # Course-specific questions that should go to handbook
+        course_question_patterns = [
+            r"prerequisite.*for.*\w+",  # prerequisites for [course]
+            r"pre.?requisite.*for.*\w+",  # pre-requisites for [course]
+            r"requirement.*for.*\w+",  # requirements for [course]
+            r"what.*need.*for.*\w+",  # what do I need for [course]
+            r"what.*required.*for.*\w+",  # what is required for [course]
+            r"professor.*for.*\w+",  # professor for [course]
+            r"instructor.*for.*\w+",  # instructor for [course]
+            r"when.*is.*\w+.*offered",  # when is [course] offered
+            r"credits.*for.*\w+",  # credits for [course]
+            r"ects.*for.*\w+"  # ECTS for [course]
+        ]
+
+        # Check for course question patterns first
+        import re
+        for pattern in course_question_patterns:
+            if re.search(pattern, query_lower):
+                logger.info(f"Matched course question pattern in query: {query}")
+                return "handbook"
+
         # Check for presence of handbook terms
         if any(term in query_lower for term in handbook_terms):
             logger.info(f"Matched handbook term in query: {query}")
@@ -132,20 +153,31 @@ class ToolClassifier:
             "software", "data", "technology", "medicinal chemistry", "mccb"
         ]
 
-        # Keywords that suggest asking about a program
+        # Keywords that suggest asking about a program or course
         program_question_indicators = [
             "program", "major", "study", "studying", "graduate", "graduation",
             "requirement", "requirements", "module", "modules", "course", "courses",
             "credit", "credits", "ects", "semester", "year", "thesis",
-            "can i", "do i need", "how to", "what is required", "what do i need"
+            "can i", "do i need", "how to", "what is required", "what do i need",
+            "prerequisite", "pre-requisite", "professor", "instructor", "teaching"
         ]
 
         # Check if query mentions a program AND has a question indicator
         has_program = any(term in query_lower for term in program_terms)
         has_indicator = any(term in query_lower for term in program_question_indicators)
 
-        if has_program and has_indicator:
-            logger.info(f"Query mentions program and has question indicator: {query}")
+        # Also check for common course names that might be asked about
+        common_courses = [
+            "operating systems", "database", "algorithms", "data structures",
+            "networks", "programming", "calculus", "linear algebra",
+            "machine learning", "artificial intelligence", "compiler",
+            "software engineering", "web development", "mobile development"
+        ]
+
+        has_course = any(course in query_lower for course in common_courses)
+
+        if (has_program or has_course) and has_indicator:
+            logger.info(f"Query mentions program/course and has question indicator: {query}")
             return "handbook"
 
         # Check for questions that are clearly about academic programs
@@ -160,7 +192,6 @@ class ToolClassifier:
             r"information about.*\b(cs|computer science|robotics|engineering)"
         ]
 
-        import re
         for pattern in academic_patterns:
             if re.search(pattern, query_lower):
                 logger.info(f"Query matches academic pattern: {query}")
@@ -168,7 +199,7 @@ class ToolClassifier:
 
         # Basic location detection
         location_terms = ["where", "find", "location", "where is", "how do i get to", "directions"]
-        if any(term in query_lower for term in location_terms) and not has_program:
+        if any(term in query_lower for term in location_terms) and not has_program and not has_course:
             return "location"
 
         # Basic locker detection
@@ -185,7 +216,7 @@ class ToolClassifier:
 
         # FAQ detection - but only if not already classified as handbook
         faq_terms = ["how do i", "how to", "what is the", "can i", "when is"]
-        if any(query_lower.startswith(term) for term in faq_terms) and not has_program:
+        if any(query_lower.startswith(term) for term in faq_terms) and not has_program and not has_course:
             return "faq"
 
         # Default to general QA
