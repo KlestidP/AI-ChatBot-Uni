@@ -302,24 +302,51 @@ async def handle_handbook_content_question(update: Update, context: ContextTypes
                 "I'm sorry, I don't have information about handbook content right now.")
             return
 
-        # Create a handbook-specific prompt
-        handbook_prompt = f"""You are a knowledgeable assistant for Constructor University Bremen. 
-        Answer the question about university program handbooks based on available information.
-        If you don't know the answer, say so clearly.
+        # Log the query for debugging
+        logger.info(f"Processing handbook content question: {query}")
 
-        User question: {query}
-        """
+        # Create a handbook-specific prompt with program context
+        program_context = ""
+        if llm and handbooks:
+            # Try to identify which program the query is about
+            for abbr, full_name in MAJOR_ABBREVIATIONS.items():
+                if abbr in query.lower() or full_name.lower() in query.lower():
+                    program_context = f" (specifically for {full_name})"
+                    logger.info(f"Identified program context: {full_name}")
+                    break
+
+        # Create an enhanced query that includes context
+        enhanced_query = f"{query}{program_context}"
+
+        # Log enhanced query
+        logger.info(f"Enhanced query: {enhanced_query}")
 
         # Add detailed logging and improved error handling here
         try:
-            # Add detailed logging to track issues
-            logger.info(f"Invoking handbook QA chain for query: {query}")
-
-            # Invoke the chain with better error handling
-            response = handbook_qa_chain.invoke(handbook_prompt)
+            # Invoke the chain
+            logger.info(f"Invoking handbook QA chain...")
+            response = handbook_qa_chain.invoke(enhanced_query)
 
             logger.info("Successfully retrieved response from handbook QA chain")
+
+            # Check if we got any response
+            if not response or not response.get('result'):
+                logger.warning("Empty response from handbook QA chain")
+                await update.message.reply_text(
+                    "I couldn't find specific information about that in the handbooks. "
+                    "Try asking about a specific program or downloading the handbook directly with /handbook [program name]."
+                )
+                return
+
             result = response.get('result', '')
+
+            # Log source documents for debugging
+            if 'source_documents' in response and response['source_documents']:
+                logger.info(f"Found {len(response['source_documents'])} source documents")
+                for i, doc in enumerate(response['source_documents'][:3]):  # Log first 3
+                    logger.debug(f"Source {i}: {doc.metadata}")
+            else:
+                logger.warning("No source documents found in response")
 
             # Add source information if available
             source_info = ""
@@ -330,51 +357,51 @@ async def handle_handbook_content_question(update: Update, context: ContextTypes
                         sources.add(doc.metadata['major'])
 
                 if sources:
-                    source_info = "\n\n*Information from:* " + ", ".join(sources) + " handbook"
+                    source_info = "\n\n*Sources:* " + ", ".join(sources) + " handbook(s)"
+                    logger.info(f"Added source info from: {sources}")
+
+            # Check if the response seems valid
+            if len(result.strip()) < 50 or "I don't know" in result or "I cannot find" in result:
+                logger.warning(f"Response seems insufficient: {result[:100]}")
+                # Try to provide helpful guidance
+                await update.message.reply_text(
+                    "I couldn't find detailed information about that specific topic in the handbooks. "
+                    "You might want to:\n\n"
+                    "• Try rephrasing your question with more specific terms\n"
+                    "• Download the relevant handbook with `/handbook [program name]`\n"
+                    "• Contact your academic advisor for detailed information"
+                )
+                return
 
             # Send the final response with sources
             await update.message.reply_text(result + source_info, parse_mode="Markdown")
+            logger.info("Successfully sent handbook response")
 
         except ValueError as ve:
             logger.error(f"Vector error in handbook retrieval: {ve}", exc_info=True)
-            # Provide a graceful fallback
 
-            # If possible, use the LLM for a generic response
-            if llm:
-                try:
-                    fallback_prompt = f"""You are an assistant for Constructor University Bremen.
-                    A student is asking about the university handbook, but there was an issue retrieving the specific content.
-                    Provide a helpful response about where they can find official handbook information.
-
-                    Their question was: {query}
-                    """
-                    fallback_response = llm.invoke(fallback_prompt)
-                    await update.message.reply_text(fallback_response.content)
-                except Exception:
-                    # If LLM fails, use a static message
-                    await update.message.reply_text(
-                        "I'm having trouble accessing the handbook information right now. "
-                        "Please try again with a more specific question, or check the official "
-                        "handbooks on the university website."
-                    )
-            else:
-                await update.message.reply_text(
-                    "I'm having trouble accessing the handbook information right now. "
-                    "Please try again with a more specific question about the handbook content."
-                )
+            # Provide a helpful fallback response
+            await update.message.reply_text(
+                "I'm having trouble searching the handbook content right now. "
+                "Please try:\n\n"
+                "• Downloading the handbook directly: `/handbook [program name]`\n"
+                "• Asking a more specific question about the program\n"
+                "• Checking the university website for the latest information"
+            )
 
         except Exception as e:
             logger.error(f"Unexpected error in handbook processing: {e}", exc_info=True)
+
+            # Generic error response
             await update.message.reply_text(
-                "I'm sorry, there was an issue retrieving handbook information. "
-                "Please try again later or check the university website for official documentation."
+                "I encountered an error while searching the handbooks. "
+                "Please try again with a different question or download the handbook directly with `/handbook [program name]`."
             )
 
     except Exception as e:
         logger.error(f"Error in overall handbook content question handling: {e}", exc_info=True)
         await update.message.reply_text(
             "I couldn't process your question about handbook content. Please try again later.")
-
 
 async def handle_handbook_query(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str = None) -> None:
     """

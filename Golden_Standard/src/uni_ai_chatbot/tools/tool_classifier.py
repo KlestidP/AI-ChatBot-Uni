@@ -101,39 +101,74 @@ class ToolClassifier:
         """
         query_lower = query.lower()
 
-        # Enhanced handbook detection
+        # Enhanced handbook detection - check this FIRST before other classifications
         handbook_terms = [
             "handbook", "program", "major", "degree", "curriculum", "syllabus",
             "course requirement", "graduation requirement", "credit", "ects",
-            "computer science program", "cs program", "bachelor thesis",
+            "bachelor thesis", "master thesis", "phd thesis", "dissertation",
             "module", "examination", "study plan", "schematic", "mandatory",
             "elective", "core module", "choice module", "career module",
             "specialization", "internship", "constructor track",
-            "curricular structure", "qualification aims"
+            "curricular structure", "qualification aims", "learning outcome",
+            "prerequisite", "corequisite", "semester", "year of study",
+            "academic", "grading", "gpa", "cgpa", "assessment",
+            "what are the requirements", "how many credits", "how many modules"
         ]
 
         # Check for presence of handbook terms
         if any(term in query_lower for term in handbook_terms):
+            logger.info(f"Matched handbook term in query: {query}")
             return "handbook"
 
         # Check for specific program names or abbreviations
         program_terms = [
             "computer science", "cs", "robotics", "ris", "intelligent systems",
-            "electrical engineering", "ece", "physics", "mathematics", "chemistry",
-            "biology", "biochemistry", "earth science", "industrial engineering",
-            "global economics", "business administration", "international business",
-            "social psychology", "cognitive psychology"
+            "electrical engineering", "ece", "physics", "pds", "mathematics",
+            "chemistry", "biology", "biochemistry", "bccb", "earth science",
+            "industrial engineering", "iem", "global economics", "gem",
+            "business administration", "iba", "international business",
+            "social psychology", "cognitive psychology", "iscp", "irph",
+            "international relations", "politics", "history", "sdt",
+            "software", "data", "technology", "medicinal chemistry", "mccb"
         ]
 
-        program_related_terms = ["program", "major", "study", "graduate", "requirement", "module"]
+        # Keywords that suggest asking about a program
+        program_question_indicators = [
+            "program", "major", "study", "studying", "graduate", "graduation",
+            "requirement", "requirements", "module", "modules", "course", "courses",
+            "credit", "credits", "ects", "semester", "year", "thesis",
+            "can i", "do i need", "how to", "what is required", "what do i need"
+        ]
 
-        if any(term in query_lower for term in program_terms) and any(
-                term in query_lower for term in program_related_terms):
+        # Check if query mentions a program AND has a question indicator
+        has_program = any(term in query_lower for term in program_terms)
+        has_indicator = any(term in query_lower for term in program_question_indicators)
+
+        if has_program and has_indicator:
+            logger.info(f"Query mentions program and has question indicator: {query}")
             return "handbook"
 
+        # Check for questions that are clearly about academic programs
+        academic_patterns = [
+            r"what.*requirements.*\b(cs|computer science|robotics|engineering|business|psychology)",
+            r"how.*graduate.*from",
+            r"how many.*credits",
+            r"what.*courses.*need",
+            r"can i.*major",
+            r"requirements.*for.*\b(bachelor|master|phd)",
+            r"tell me about.*program",
+            r"information about.*\b(cs|computer science|robotics|engineering)"
+        ]
+
+        import re
+        for pattern in academic_patterns:
+            if re.search(pattern, query_lower):
+                logger.info(f"Query matches academic pattern: {query}")
+                return "handbook"
+
         # Basic location detection
-        location_terms = ["where", "find", "location", "where is", "how do i get to"]
-        if any(term in query_lower for term in location_terms):
+        location_terms = ["where", "find", "location", "where is", "how do i get to", "directions"]
+        if any(term in query_lower for term in location_terms) and not has_program:
             return "location"
 
         # Basic locker detection
@@ -142,15 +177,15 @@ class ToolClassifier:
             return "locker"
 
         # Servery detection
-        servery_terms = ["servery", "food", "meal", "eat", "dining", "breakfast", "lunch", "dinner", "coffee bar",
-                         "menu", "cafeteria"]
+        servery_terms = ["servery", "food", "meal", "eat", "dining", "breakfast", "lunch", "dinner",
+                         "coffee bar", "menu", "cafeteria"]
         time_terms = ["hours", "time", "open", "when", "schedule"]
         if any(term in query_lower for term in servery_terms) and any(term in query_lower for term in time_terms):
             return "servery"
 
-        # FAQ detection
+        # FAQ detection - but only if not already classified as handbook
         faq_terms = ["how do i", "how to", "what is the", "can i", "when is"]
-        if any(query_lower.startswith(term) for term in faq_terms):
+        if any(query_lower.startswith(term) for term in faq_terms) and not has_program:
             return "faq"
 
         # Default to general QA

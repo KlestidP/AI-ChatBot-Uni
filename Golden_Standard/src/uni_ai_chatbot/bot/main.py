@@ -17,7 +17,8 @@ from uni_ai_chatbot.services.servery_service import parse_servery_hours
 from uni_ai_chatbot.tools.tools_architecture import tool_registry
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.DEBUG
 )
 logger = logging.getLogger(__name__)
 

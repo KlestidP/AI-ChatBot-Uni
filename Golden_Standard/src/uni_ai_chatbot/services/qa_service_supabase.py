@@ -1,17 +1,56 @@
 import logging
-from typing import Tuple, Any
+from typing import Tuple, Any, List, Dict
 from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_core.prompts import PromptTemplate
 from langchain_mistralai import MistralAIEmbeddings
 from langchain_mistralai import ChatMistralAI
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
 
 from uni_ai_chatbot.configurations.config import MISTRAL_API_KEY, LLM_MODEL, LLM_TEMPERATURE, LLM_MAX_RETRIES
 from uni_ai_chatbot.utils.database import get_supabase_client
 from uni_ai_chatbot.utils.custom_supabase import FixedSupabaseVectorStore
 
 logger = logging.getLogger(__name__)
+
+
+class FilteredRetriever(BaseRetriever):
+    """A custom retriever that filters documents by metadata after retrieval"""
+    
+    base_retriever: BaseRetriever
+    filter_dict: Dict[str, Any]
+    k: int = 4
+    
+    class Config:
+        """Configuration for this pydantic object."""
+        arbitrary_types_allowed = True
+    
+    def _get_relevant_documents(
+        self, 
+        query: str, 
+        *, 
+        run_manager: CallbackManagerForRetrieverRun = None
+    ) -> List[Document]:
+        """Retrieve documents and filter by metadata"""
+        # Get more documents than needed (k * 3)
+        all_docs = self.base_retriever.get_relevant_documents(query)
+        
+        # Filter documents based on metadata
+        filtered_docs = []
+        for doc in all_docs:
+            match = True
+            for key, value in self.filter_dict.items():
+                if doc.metadata.get(key) != value:
+                    match = False
+                    break
+            if match:
+                filtered_docs.append(doc)
+        
+        # Return up to k documents
+        logger.debug(f"Filtered {len(filtered_docs)} docs from {len(all_docs)} total")
+        return filtered_docs[:self.k]
 
 
 def get_qa_prompt_template() -> PromptTemplate:
@@ -67,44 +106,61 @@ def initialize_qa_chain():
 
         # Create handbook-specific prompt
         handbook_prompt_template = """You are a knowledgeable assistant that specializes in Constructor University program handbooks.
-        Use ONLY the following handbook content to answer the question. If the handbook doesn't contain the information, 
-        say so clearly, and suggest contacting an academic advisor.
+        
+        Use the following handbook content to answer the question. Be thorough and specific in your response.
+        
+        IMPORTANT: If the provided context doesn't contain enough information to fully answer the question, 
+        say what you can based on the available information and mention what specific information is missing.
 
-        HANDBOOK CONTENT:
+        Context from handbooks:
         {context}
 
-        QUESTION: {question}
+        Question: {question}
 
-        Your answer should be detailed and precise, using the exact wording from the handbook when describing requirements.
-        Format your response clearly with proper headings and bullet points.
+        Provide a detailed answer using the handbook information. Include:
+        - Specific requirements or criteria mentioned
+        - Credit hours or ECTS if mentioned
+        - Any important policies or procedures
+        - Relevant deadlines or timelines
+        
+        Format your response clearly with bullet points where appropriate.
         """
 
         handbook_prompt = PromptTemplate.from_template(handbook_prompt_template)
 
-        # Create retrievers for different document types
+        # Create base retriever that gets more documents
+        base_retriever = vector_store.as_retriever(
+            search_kwargs={"k": 20}  # Get more documents for filtering
+        )
+
+        # Create filtered retrievers using our custom FilteredRetriever
         general_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {}, "k": 6, "score_threshold": 0.5}
+            search_kwargs={"k": 6}
         )
 
-        location_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {"metadata": {"tool": "location"}}, "k": 4}
+        location_retriever = FilteredRetriever(
+            base_retriever=base_retriever,
+            filter_dict={"tool": "location"},
+            k=4
         )
 
-        locker_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {"metadata": {"tool": "locker"}}, "k": 4}
+        locker_retriever = FilteredRetriever(
+            base_retriever=base_retriever,
+            filter_dict={"tool": "locker"},
+            k=4
         )
 
-        faq_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {"metadata": {"tool": "qa"}}, "k": 4}
+        faq_retriever = FilteredRetriever(
+            base_retriever=base_retriever,
+            filter_dict={"tool": "qa"},
+            k=4
         )
 
-        # Enhanced handbook retriever with improved settings
-        handbook_retriever = vector_store.as_retriever(
-            # Use standard similarity search instead of MMR
-            search_kwargs={
-                "filter": {"metadata": {"tool": "handbook"}},
-                "k": 10  # Retrieve more documents
-            }
+        # Special handling for handbook retriever - get more docs
+        handbook_retriever = FilteredRetriever(
+            base_retriever=base_retriever,
+            filter_dict={"tool": "handbook"},
+            k=15  # Get more handbook chunks for better context
         )
 
         # Create QA chains with custom prompts
@@ -122,13 +178,12 @@ def initialize_qa_chain():
         location_qa_chain = create_chain(location_retriever)
         locker_qa_chain = create_chain(locker_retriever)
         faq_qa_chain = create_chain(faq_retriever)
-        handbook_qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            retriever=handbook_retriever,
-            return_source_documents=True,
-            chain_type="stuff",
-            chain_type_kwargs={"prompt": handbook_prompt}
-        )
+        
+        # Special handbook chain with enhanced prompt
+        handbook_qa_chain = create_chain(handbook_retriever, handbook_prompt)
+
+        # Log initialization success
+        logger.info("Successfully initialized all QA chains with filtered retrievers")
 
         return (vector_store, llm, general_qa_chain, location_qa_chain,
                 locker_qa_chain, faq_qa_chain, handbook_qa_chain)
@@ -136,6 +191,7 @@ def initialize_qa_chain():
     except Exception as e:
         logger.error(f"Error initializing QA chain: {e}")
         raise
+
 
 def get_scoped_qa_chain(vector_store: SupabaseVectorStore, llm: ChatMistralAI, tool_type: str) -> RetrievalQA:
     """
@@ -149,18 +205,22 @@ def get_scoped_qa_chain(vector_store: SupabaseVectorStore, llm: ChatMistralAI, t
     Returns:
         A QA chain that only queries documents of the specified tool type
     """
-    # Create a filtered retriever that only returns documents of the specified tool type
-    retriever = vector_store.as_retriever(
-        search_kwargs={
-            "k": 4,
-            "filter": {"tool": tool_type}
-        }
+    # Create base retriever
+    base_retriever = vector_store.as_retriever(
+        search_kwargs={"k": 20}
+    )
+    
+    # Create a filtered retriever
+    filtered_retriever = FilteredRetriever(
+        base_retriever=base_retriever,
+        filter_dict={"tool": tool_type},
+        k=4
     )
 
     # Create a QA chain with the filtered retriever
     return RetrievalQA.from_chain_type(
         llm=llm,
-        retriever=retriever,
+        retriever=filtered_retriever,
         return_source_documents=True
     )
 
@@ -188,46 +248,100 @@ def initialize_qa_chain_with_provider(provider=None, api_key=None, model=None):
         # Get LLM model
         llm = get_llm_model(provider, api_key, model)
 
-        # Create retrievers for different document types
+        # Create custom prompts
+        qa_prompt = get_qa_prompt_template()
+        
+        handbook_prompt_template = """You are a knowledgeable assistant that specializes in Constructor University program handbooks.
+        
+        Use the following handbook content to answer the question. Be thorough and specific in your response.
+        
+        IMPORTANT: If the provided context doesn't contain enough information to fully answer the question, 
+        say what you can based on the available information and mention what specific information is missing.
+
+        Context from handbooks:
+        {context}
+
+        Question: {question}
+
+        Provide a detailed answer using the handbook information. Include:
+        - Specific requirements or criteria mentioned
+        - Credit hours or ECTS if mentioned
+        - Any important policies or procedures
+        - Relevant deadlines or timelines
+        
+        Format your response clearly with bullet points where appropriate.
+        """
+
+        handbook_prompt = PromptTemplate.from_template(handbook_prompt_template)
+
+        # Create base retriever
+        base_retriever = vector_store.as_retriever(
+            search_kwargs={"k": 20}
+        )
+
+        # Create filtered retrievers
         general_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {}, "k": 6, "score_threshold": 0.5}
+            search_kwargs={"k": 6}
         )
 
-        location_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {"metadata": {"tool": "location"}}, "k": 4}
+        location_retriever = FilteredRetriever(
+            base_retriever=base_retriever,
+            filter_dict={"tool": "location"},
+            k=4
         )
 
-        locker_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {"metadata": {"tool": "locker"}}, "k": 4}
+        locker_retriever = FilteredRetriever(
+            base_retriever=base_retriever,
+            filter_dict={"tool": "locker"},
+            k=4
         )
 
-        faq_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {"metadata": {"tool": "qa"}}, "k": 4}
+        faq_retriever = FilteredRetriever(
+            base_retriever=base_retriever,
+            filter_dict={"tool": "qa"},
+            k=4
         )
 
-        handbook_retriever = vector_store.as_retriever(
-            search_kwargs={"filter": {"metadata": {"tool": "handbook"}}, "k": 6}
+        handbook_retriever = FilteredRetriever(
+            base_retriever=base_retriever,
+            filter_dict={"tool": "handbook"},
+            k=15
         )
 
         # Create QA chains for different document types
         general_qa_chain = RetrievalQA.from_chain_type(
-            llm=llm, retriever=general_retriever, return_source_documents=True
+            llm=llm, 
+            retriever=general_retriever, 
+            return_source_documents=True,
+            chain_type_kwargs={"prompt": qa_prompt}
         )
 
         location_qa_chain = RetrievalQA.from_chain_type(
-            llm=llm, retriever=location_retriever, return_source_documents=True
+            llm=llm, 
+            retriever=location_retriever, 
+            return_source_documents=True,
+            chain_type_kwargs={"prompt": qa_prompt}
         )
 
         locker_qa_chain = RetrievalQA.from_chain_type(
-            llm=llm, retriever=locker_retriever, return_source_documents=True
+            llm=llm, 
+            retriever=locker_retriever, 
+            return_source_documents=True,
+            chain_type_kwargs={"prompt": qa_prompt}
         )
 
         faq_qa_chain = RetrievalQA.from_chain_type(
-            llm=llm, retriever=faq_retriever, return_source_documents=True
+            llm=llm, 
+            retriever=faq_retriever, 
+            return_source_documents=True,
+            chain_type_kwargs={"prompt": qa_prompt}
         )
 
         handbook_qa_chain = RetrievalQA.from_chain_type(
-            llm=llm, retriever=handbook_retriever, return_source_documents=True
+            llm=llm, 
+            retriever=handbook_retriever, 
+            return_source_documents=True,
+            chain_type_kwargs={"prompt": handbook_prompt}
         )
 
         return (vector_store, llm, general_qa_chain, location_qa_chain,
